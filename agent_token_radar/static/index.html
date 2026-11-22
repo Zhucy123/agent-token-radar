@@ -7,6 +7,40 @@
 <meta name="color-scheme" content="light dark">
 <title>Agent Token Radar</title>
 <link rel="stylesheet" href="/static/app.css">
+<!-- MANDATORY (no flash of the default size): the settings must be on <html>
+     before the first paint, and app.js is deferred so it would run too late.
+     Placed BEFORE the deferred bundle deliberately -- `defer` would technically
+     still run it later, but keeping the order honest means a reader can see why
+     there is no flash. This duplicates the table in app.js; a module import
+     would block rendering behind another request, and the point here is to be
+     synchronous. Keep the two in step when adding a setting (a test enforces
+     it). -->
+<script>
+(function () {
+  var root = document.documentElement;
+  // fontSize: percentage of the stylesheet's design size.
+  var FS = { small: 90, normal: 100, large: 115, xlarge: 130 };
+  // Typeface stacks, installed fonts only (the app makes no network requests).
+  var FF = {
+    system: 'system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif',
+    sans: '"Inter", "Segoe UI Variable Text", "Segoe UI", "Helvetica Neue", Arial, "Microsoft YaHei", sans-serif',
+    serif: 'Georgia, "Noto Serif", "Source Han Serif SC", "Songti SC", "SimSun", serif',
+    mono: '"Cascadia Code", "Cascadia Mono", Consolas, "SF Mono", "DejaVu Sans Mono", "Microsoft YaHei Mono", monospace'
+  };
+  try {
+    var fs = localStorage.getItem("atr.fs");
+    if (fs && Object.prototype.hasOwnProperty.call(FS, fs)) {
+      root.style.fontSize = FS[fs] + "%";
+      root.dataset.fs = fs;
+    }
+    var ff = localStorage.getItem("atr.ff");
+    if (ff && Object.prototype.hasOwnProperty.call(FF, ff)) {
+      root.style.setProperty("--font-ui", FF[ff]);
+      root.dataset.ff = ff;
+    }
+  } catch (e) { /* storage blocked: keep the stylesheet defaults */ }
+})();
+</script>
 <script defer src="/static/app.js"></script>
 </head>
 <body>
@@ -51,6 +85,19 @@
       <button type="button" data-lang="zh" aria-pressed="true" lang="zh-CN">中文</button>
       <button type="button" data-lang="en" aria-pressed="false" lang="en">EN</button>
     </div>
+
+    <!-- Opens the native modal below. `command`/`commandfor` means no click
+         handler is needed; app.js falls back to showModal() where the Invoker
+         Commands API is missing. No aria-expanded here: the browser owns it. -->
+    <button type="button" id="settingsBtn" class="btn-icon-only"
+            commandfor="settingsDialog" command="show-modal"
+            data-i18n-aria="settings.open">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/>
+      </svg>
+    </button>
   </div>
 
   <p id="status" class="status" role="status" aria-live="polite" data-i18n="status.loading">正在加载…</p>
@@ -223,5 +270,31 @@
     <p id="footerIcons" class="footer-icons" data-i18n="footer.icons">图标均为各 Agent 官方标识（simple-icons 或厂商站点资源）。</p>
   </footer>
 </main>
+
+<!-- Settings. A native modal <dialog>: the browser supplies the focus trap,
+     top layer, Esc/back-gesture dismissal and focus return to #settingsBtn, so
+     none of that is reimplemented here (no role="dialog", no aria-modal).
+     `closedby="any"` adds click-outside as progressive enhancement -- Esc
+     already works without it. The body is built from SETTINGS in app.js, so a
+     new setting is one config entry rather than new markup. -->
+<dialog id="settingsDialog" closedby="any" aria-labelledby="settingsTitle">
+  <form method="dialog" class="settings-form">
+    <header class="settings-head">
+      <h2 id="settingsTitle" data-i18n="settings.title">设置</h2>
+      <button type="submit" class="settings-close" value="close"
+              data-i18n-aria="settings.close">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" aria-hidden="true">
+          <path d="M18 6 6 18M6 6l12 12"/>
+        </svg>
+      </button>
+    </header>
+    <div id="settingsBody" class="settings-body"></div>
+    <footer class="settings-foot">
+      <button type="button" id="settingsReset" class="settings-reset"
+              data-i18n="settings.reset">恢复默认</button>
+    </footer>
+  </form>
+</dialog>
 </body>
 </html>

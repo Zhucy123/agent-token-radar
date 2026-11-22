@@ -1,0 +1,362 @@
+"""The dashboard's Settings dialog: data-driven, persisted, no first-paint flash.
+
+Three things are easy to get wrong here and all of them are silent:
+
+* **A setting that renders but does not persist.** The change applies to the
+  live page and looks right, then the next reload reverts it and the user
+  reports "it doesn't remember my choice".
+* **A setting that persists but is not applied before first paint.** app.js is
+  deferred, so anything it applies arrives after the browser has already
+  painted; the page shows the default size for a frame and then jumps (FOUC).
+  The inline <head> script exists only for this, and its table must agree with
+  the one in app.js or the two will drift.
+* **A setting that changes the page but not the canvas.** Canvas2D bakes its
+  font at draw time, so a typeface or size change that does not trigger a
+  redraw leaves the chart axis labels on the old font -- the same class of bug
+  the prefers-color-scheme listener was added for.
+
+These tests read ``app.js``/``index.html`` as text for the wiring, then run the
+real ``SETTINGS`` table through Node to check the option values, the CSS custom
+property each one writes, and that every option has both translations.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+import shutil
+import subprocess
+import tempfile
+import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+APP_JS = ROOT / "agent_token_radar" / "static" / "app.js"
+INDEX_HTML = ROOT / "agent_token_radar" / "static" / "index.html"
+NODE = shutil.which("node")
+
+
+def _js() -> str:
+    return APP_JS.read_text(encoding="utf-8")
+
+
+def _html() -> str:
+    return INDEX_HTML.read_text(encoding="utf-8")
+
+
+class SettingsMarkupTests(unittest.TestCase):
+    """The dialog must be a native modal, and every control needs a name."""
+
+    def test_settings_button_opens_the_dialog(self) -> None:
+        html = _html()
+        self.assertIn('id="settingsDialog"', html)
+        self.assertIn('commandfor="settingsDialog"', html)
+        self.assertIn('command="show-modal"', html,
+                      "the button must open the dialog as a modal")
+
+    def test_button_has_an_accessible_name(self) -> None:
+        """An icon-only button with no label is announced as just "button"."""
+        html = _html()
+        m = re.search(r'<button[^>]*id="settingsBtn"[^>]*>', html, re.S)
+        self.assertIsNotNone(m, "settings button not found")
+        self.assertIn("data-i18n-aria", m.group(0),
+                      "icon-only trigger needs an aria-label from the string table")
+
+    def test_dialog_is_native_and_not_reimplemented(self) -> None:
+        html = _html()
+        m = re.search(r"<dialog[^>]*settingsDialog[^>]*>", html)
+        self.assertIsNotNone(m, "settingsDialog is not a native <dialog>")
+        # The native modal already provides these; adding them is a bug.
+        self.assertNotIn('role="dialog"', m.group(0))
+        self.assertNotIn("aria-modal", m.group(0))
+
+    def test_dialog_has_a_title_reference(self) -> None:
+        html = _html()
+        m = re.search(r"<dialog[^>]*settingsDialog[^>]*>", html)
+        self.assertIn("aria-labelledby", m.group(0),
+                      "a dialog needs an accessible name from its heading")
+
+    def test_body_is_a_container_not_hard_coded_fields(self) -> None:
+        """Adding a setting must be a config entry, not new markup."""
+        html = _html()
+        self.assertIn('id="settingsBody"', html)
+        # No setting-specific markup should exist in the HTML at all.
+        self.assertNotIn('data-setting="fs"', html)
+        self.assertNotIn('data-setting="ff"', html)
+
+
+class SettingsInlineBootstrapTests(unittest.TestCase):
+    """The <head> script is what prevents the first-paint flash."""
+
+    def test_inline_script_exists_before_the_deferred_bundle(self) -> None:
+        html = _html()
+        inline = html.find("atr.fs")
+        deferred = html.find('src="/static/app.js"')
+        self.assertGreater(inline, -1, "no inline bootstrap reading atr.fs")
+        self.assertGreater(deferred, -1)
+        self.assertLess(inline, deferred,
+                        "the inline script must come before the deferred app.js, "
+                        "or the first paint shows the default size")
+
+    def test_bootstrap_matches_the_js_table(self) -> None:
+        """Two copies of the option table; drift means the flash comes back."""
+        html = _html()
+        js = _js()
+
+        html_fs = re.search(r"var FS = \{(.*?)\};", html, re.S)
+        self.assertIsNotNone(html_fs, "FS map missing from the inline script")
+        html_sizes = dict(re.findall(r"(\w+):\s*(\d+)", html_fs.group(1)))
+
+        js_sizes = dict(re.findall(
+            r"\{ value: \"(\w+)\", pct: (\d+)", js))
+        self.assertEqual(html_sizes, js_sizes,
+                         "the inline FS map and SETTINGS disagree; the page would "
+                         "render one size and settle on another")
+
+        # Same for the typeface stacks: compare the option values, not the long
+        # CSS strings (which are allowed to differ in quoting).
+        html_ff = re.search(r"var FF = \{(.*?)\};", html, re.S)
+        self.assertIsNotNone(html_ff, "FF map missing from the inline script")
+        html_faces = set(re.findall(r"^\s*(\w+):\s*'", html_ff.group(1), re.M))
+        js_faces = set(re.findall(r'value: "(\w+)",\s*\n\s*label: "settings\.ff\.', js))
+        self.assertEqual(html_faces, js_faces,
+                         "the inline FF map and SETTINGS offer different typefaces")
+
+
+class SettingsConfigTests(unittest.TestCase):
+    """Static checks on the SETTINGS table and its consumers."""
+
+    def test_settings_are_data_driven(self) -> None:
+        js = _js()
+        self.assertIn("const SETTINGS = [", js)
+        self.assertIn("for (const s of SETTINGS)", js,
+                      "apply/read/reset must walk the config, not hardcode keys")
+
+    def test_every_setting_declares_storage_and_apply(self) -> None:
+        js = _js()
+        for key in ("key:", "options:", "fallback:", "apply("):
+            self.assertIn(key, js, f"SETTINGS entries must declare {key}")
+
+    def test_changing_a_setting_redraws_the_chart(self) -> None:
+        """Canvas bakes its font; a CSS-only change would leave it stale."""
+        js = _js()
+        m = re.search(r"function applySetting\(setting, value\) \{(.*?)\n  \}",
+                      js, re.S)
+        self.assertIsNotNone(m, "applySetting not found")
+        self.assertIn("renderChart", m.group(1),
+                      "applySetting must redraw the canvas chart")
+
+    def test_chart_reads_the_font_token(self) -> None:
+        js = _js()
+        self.assertIn("--font-ui", js,
+                      "the canvas font must follow the chosen typeface")
+        self.assertNotIn('ctx.font = "0.6875rem system-ui', js,
+                         "a hardcoded chart font would ignore the setting")
+
+
+@unittest.skipIf(NODE is None, "node not available")
+class SettingsBehaviourTests(unittest.TestCase):
+    """Run the real SETTINGS table through Node against a small DOM stub."""
+
+    def _run(self, expr: str) -> object:
+        script = r"""
+const fs = require("fs");
+const src = fs.readFileSync(process.argv[2], "utf8");
+function extract(name) {
+  const start = src.indexOf(`function ${name}(`);
+  if (start < 0) throw new Error(`${name} not found`);
+  let i = src.indexOf("{", start), depth = 0;
+  for (; i < src.length; i++) {
+    if (src[i] === "{") depth++;
+    else if (src[i] === "}") { depth--; if (depth === 0) return src.slice(start, i + 1); }
+  }
+  throw new Error(`unbalanced ${name}`);
+}
+// Pull the SETTINGS literal out verbatim so its apply() closures come along.
+const sStart = src.indexOf("const SETTINGS = [");
+let i = src.indexOf("[", sStart), depth = 0, sEnd = -1;
+for (; i < src.length; i++) {
+  if (src[i] === "[") depth++;
+  else if (src[i] === "]") { depth--; if (depth === 0) { sEnd = i + 1; break; } }
+}
+const settingsLiteral = src.slice(src.indexOf("[", sStart), sEnd);
+
+const root = {
+  style: {
+    _p: {},
+    set fontSize(v) { this._fs = v; },
+    get fontSize() { return this._fs; },
+    setProperty(k, v) { this._p[k] = v; },
+    getPropertyValue(k) { return this._p[k] || ""; },
+  },
+  dataset: {},
+};
+const document = { documentElement: root, querySelector: () => null };
+const state = { trend: null };
+let chartCalls = 0;
+function renderChart() { chartCalls++; }
+
+const SETTINGS = new Function("document", "state", "renderChart",
+  `return ${settingsLiteral};`)(document, state, renderChart);
+
+""" + expr
+
+        with tempfile.TemporaryDirectory(prefix="atr_settings_") as tmp:
+            path = Path(tmp) / "probe.js"
+            path.write_text(script, encoding="utf-8")
+            out = subprocess.run(
+                [NODE, str(path), str(APP_JS)],
+                capture_output=True, text=True, encoding="utf-8", timeout=60,
+            )
+        if out.returncode != 0:
+            raise AssertionError(f"node failed:\n{out.stderr}\n{out.stdout}")
+        return json.loads(out.stdout)
+
+    def test_font_size_options_and_percentages(self) -> None:
+        got = self._run("""
+const s = SETTINGS.find(x => x.key === "fs");
+console.log(JSON.stringify({
+  values: s.options.map(o => o.value),
+  pcts: s.options.map(o => o.pct),
+  fallback: s.fallback,
+}));
+""")
+        self.assertEqual(got["values"], ["small", "normal", "large", "xlarge"])
+        self.assertEqual(got["pcts"], [90, 100, 115, 130])
+        self.assertEqual(got["fallback"], "normal",
+                         "the default must be today's look, not a different size")
+        self.assertEqual(got["pcts"][got["values"].index(got["fallback"])], 100,
+                         "the fallback must map to 100% so nothing changes by default")
+
+    def test_font_size_apply_writes_root_size(self) -> None:
+        got = self._run("""
+const s = SETTINGS.find(x => x.key === "fs");
+const out = {};
+for (const o of s.options) {
+  s.apply.call(s, o.value);
+  out[o.value] = { style: document.documentElement.style.fontSize,
+                   attr: document.documentElement.dataset.fs };
+}
+console.log(JSON.stringify(out));
+""")
+        self.assertEqual(got["xlarge"]["style"], "130%")
+        self.assertEqual(got["xlarge"]["attr"], "xlarge")
+        self.assertEqual(got["normal"]["style"], "100%")
+        self.assertEqual(got["small"]["style"], "90%")
+
+    def test_unknown_value_falls_back_instead_of_blanking(self) -> None:
+        """A stale or hand-edited localStorage value must not break the page."""
+        got = self._run("""
+const s = SETTINGS.find(x => x.key === "fs");
+s.apply.call(s, "nonsense");
+console.log(JSON.stringify({style: document.documentElement.style.fontSize}));
+""")
+        self.assertEqual(got["style"], "100%",
+                         "an unknown value must fall back to the default size")
+
+    def test_typefaces_are_installed_only_and_end_in_a_generic(self) -> None:
+        got = self._run("""
+const s = SETTINGS.find(x => x.key === "ff");
+console.log(JSON.stringify(s.options.map(o => ({v: o.value, stack: o.stack}))));
+""")
+        values = [o["v"] for o in got]
+        self.assertEqual(values, ["system", "sans", "serif", "mono"])
+        for opt in got:
+            stack = opt["stack"]
+            self.assertTrue(
+                stack.rstrip().endswith(("sans-serif", "serif", "monospace")),
+                f"{opt['v']} must end in a generic family: {stack}")
+            # No webfonts: the project makes no network requests.
+            self.assertNotIn("url(", stack)
+            self.assertNotIn("http", stack)
+
+    def test_typeface_apply_writes_the_font_token(self) -> None:
+        got = self._run("""
+const s = SETTINGS.find(x => x.key === "ff");
+const out = {};
+for (const o of s.options) {
+  s.apply.call(s, o.value);
+  out[o.value] = document.documentElement.style.getPropertyValue("--font-ui");
+}
+console.log(JSON.stringify(out));
+""")
+        for value, token in got.items():
+            self.assertTrue(token, f"{value} did not write --font-ui")
+        self.assertIn("monospace", got["mono"])
+        self.assertIn("Georgia", got["serif"])
+
+    def test_applying_a_setting_redraws_the_chart(self) -> None:
+        """Run the shipped applySetting body, not a copy of it."""
+        js = _js()
+        m = re.search(r"function applySetting\(setting, value\) \{(.*?)\n  \}",
+                      js, re.S)
+        body = m.group(1)
+        got = self._run(f"""
+state.trend = {{days: [], agents: [], series: {{}}}};
+function applySetting(setting, value) {{{body}
+}}
+applySetting(SETTINGS[0], "large");
+console.log(JSON.stringify({{calls: chartCalls}}));
+""")
+        self.assertEqual(got["calls"], 1,
+                         "changing a setting must trigger exactly one redraw")
+
+    def test_no_redraw_when_there_is_no_chart_yet(self) -> None:
+        js = _js()
+        m = re.search(r"function applySetting\(setting, value\) \{(.*?)\n  \}",
+                      js, re.S)
+        body = m.group(1)
+        got = self._run(f"""
+state.trend = null;
+function applySetting(setting, value) {{{body}
+}}
+applySetting(SETTINGS[0], "large");
+console.log(JSON.stringify({{calls: chartCalls}}));
+""")
+        self.assertEqual(got["calls"], 0,
+                         "applying settings during boot must not draw a chart "
+                         "before data exists")
+
+
+class SettingsTranslationTests(unittest.TestCase):
+    """Chinese mode must show Chinese only; every label needs both."""
+
+    def test_every_option_label_is_translated(self) -> None:
+        import sys
+        sys.path.insert(0, str(ROOT))
+        from agent_token_radar.i18n import STRINGS
+
+        js = _js()
+        keys = set(re.findall(r'"(settings\.[\w.]+)"', js))
+        labels = {k for k in keys
+                  if k.startswith(("settings.fs.", "settings.ff."))
+                  or k in ("settings.title", "settings.reset",
+                           "settings.fontSize", "settings.fontFamily",
+                           "settings.close", "settings.open")}
+        self.assertTrue(labels, "no settings keys found in app.js")
+        for key in sorted(labels):
+            for lang in ("zh", "en"):
+                self.assertIn(key, STRINGS[lang],
+                              f"{key} missing from {lang}")
+            self.assertNotEqual(STRINGS["zh"][key], STRINGS["en"][key],
+                                f"{key} is identical in both languages")
+
+    def test_chinese_labels_have_no_latin_sentences(self) -> None:
+        import sys
+        sys.path.insert(0, str(ROOT))
+        from agent_token_radar.i18n import STRINGS
+
+        # Only proper nouns may stay Latin; a run of 4+ Latin letters in a
+        # Chinese string means a sentence leaked through untranslated.
+        allowed = {"Agent", "Model", "Provider", "Session", "Token", "token"}
+        for key, value in STRINGS["zh"].items():
+            if not key.startswith(("settings.", "toolbar.")):
+                continue
+            words = re.findall(r"[A-Za-z]{4,}", value)
+            leaked = [w for w in words if w not in allowed]
+            self.assertEqual(leaked, [],
+                             f"{key} leaks English into Chinese mode: {leaked}")
+
+
+if __name__ == "__main__":
+    unittest.main()

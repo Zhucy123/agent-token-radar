@@ -96,6 +96,12 @@
 
     --topbar-h: 3.75rem;
 
+    /* Interface typeface. Settings rewrites this custom property (and the
+       inline <head> script restores it before first paint), so the whole page
+       and the canvas chart read ONE source. Installed fonts only: the project
+       makes no network requests, so no webfont is loaded. */
+    --font-ui: system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+
     accent-color: var(--brand);
     /* Scrollbar thumb vs track needs 3:1; --muted is the safe choice. */
     scrollbar-color: var(--muted) transparent;
@@ -117,7 +123,7 @@
 /* =============================================================== base */
 @layer base {
   html {
-    font-family: system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+    font-family: var(--font-ui);
     /* Anchor jumps must not land under the sticky bar. */
     scroll-padding-block-start: calc(var(--topbar-h) + var(--space-4));
     -webkit-text-size-adjust: 100%;
@@ -297,6 +303,174 @@
   }
   /* :has() instead of a JS-managed class: the label follows its own checkbox. */
   .auto:has(input:checked) { color: var(--text); }
+
+  /* ---------- settings: trigger + modal ---------- */
+
+  /* Icon-only control, so it needs a square hit area and a real accessible
+     name (supplied by data-i18n-aria on the button). */
+  .btn-icon-only {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 2.25rem;
+    block-size: 2.25rem;
+    padding: 0;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--surface-raised);
+    color: var(--muted);
+    cursor: pointer;
+    box-shadow: var(--shadow-1);
+    transition: color 120ms ease, border-color 120ms ease;
+  }
+  .btn-icon-only svg { inline-size: 1.125rem; block-size: 1.125rem; }
+  .btn-icon-only:hover { color: var(--text); border-color: var(--muted); }
+
+  /* MANDATORY: `dialog:modal` targets the modal state only -- setting display
+     on a bare `dialog` would override the closed state. */
+  dialog:modal {
+    overscroll-behavior: contain; /* scroll gestures must not chain to the page */
+  }
+  dialog::backdrop {
+    overflow: hidden; /* ::backdrop is not a scroll container, so overscroll-behavior alone would be ignored */
+    overscroll-behavior: contain;
+    background: light-dark(#0f172a66, #000000a8);
+  }
+
+  .settings-panel, #settingsDialog {
+    /* Wide enough that four segments fit on one row at the largest text size;
+       the grid inside falls back to two columns rather than overflowing. */
+    inline-size: min(34rem, calc(100vw - 2 * var(--space-4)));
+    max-block-size: min(80vh, 40rem);
+    padding: 0;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    background: var(--panel);
+    color: var(--text);
+    box-shadow: var(--shadow-2);
+    overflow: hidden;
+  }
+  .settings-form {
+    display: flex;
+    flex-direction: column;
+    max-block-size: inherit;
+    margin: 0;
+  }
+  .settings-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: var(--space-4) var(--space-5);
+    border-block-end: 1px solid var(--line);
+  }
+  .settings-head h2 { margin: 0; font-size: var(--text-xl); }
+  .settings-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 2.25rem;
+    block-size: 2.25rem;
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .settings-close svg { inline-size: 1.125rem; block-size: 1.125rem; }
+  .settings-close:hover { color: var(--text); background: var(--surface-sunken); }
+
+  .settings-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-5);
+    padding: var(--space-5);
+    overflow-y: auto;
+  }
+  .setting {
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+  .setting-label {
+    padding: 0;
+    font-size: var(--text-base);
+    font-weight: 650;
+  }
+  .setting-hint {
+    margin: var(--space-1) 0 var(--space-3);
+    color: var(--muted);
+    font-size: var(--text-sm);
+    line-height: 1.45;
+  }
+  /* Segmented radio group. A grid so four options share the width evenly; the
+     row falls back to two columns when the labels cannot fit at the current
+     font size (the large steps make the dialog's text much wider). */
+  .setting-seg {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(6.5rem, 1fr));
+    gap: 2px;
+    padding: 3px;
+    background: var(--surface-sunken);
+    border: 1px solid var(--hairline);
+    border-radius: 10px;
+  }
+  .setting-opt {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-block-size: 2.125rem;
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-sm);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--muted);
+    cursor: pointer;
+    text-align: center;
+    /* A longer translation ("System default", "Extra large") must not wrap into
+       a ragged two-line segment while its neighbours stay on one line. */
+    white-space: nowrap;
+    overflow-wrap: normal;
+  }
+  /* The radio stays in the a11y tree and keeps arrow-key grouping; only its
+     native paint is hidden. Not display:none -- that would remove it from
+     keyboard navigation entirely. */
+  .setting-opt input {
+    position: absolute;
+    opacity: 0;
+    inline-size: 1px;
+    block-size: 1px;
+    margin: 0;
+  }
+  .setting-opt:has(input:checked) {
+    background: var(--surface-raised);
+    color: var(--brand);
+    box-shadow: var(--shadow-1);
+  }
+  .setting-opt:has(input:focus-visible) {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
+  }
+  .settings-foot {
+    display: flex;
+    justify-content: flex-end;
+    padding: var(--space-3) var(--space-5) var(--space-4);
+    border-block-start: 1px solid var(--line);
+  }
+  .settings-reset {
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--muted);
+    font: inherit;
+    font-size: var(--text-base);
+    cursor: pointer;
+    min-block-size: 2.25rem;
+  }
+  .settings-reset:hover { color: var(--text); border-color: var(--muted); }
 
   .status {
     flex-basis: 100%;
@@ -974,6 +1148,9 @@
   @media (pointer: coarse) {
     .ranges button, .lang-switch button { min-block-size: 2.75rem; padding-inline: var(--space-3); }
     .btn-primary { min-block-size: 2.75rem; }
+    /* Icon-only controls and the settings rows are touch targets too. */
+    .btn-icon-only, .settings-close { inline-size: 2.75rem; block-size: 2.75rem; }
+    .setting-opt, .settings-reset { min-block-size: 2.75rem; }
     /* The project expander is the only way into a merged project row, and it
        was left at its 32px desktop size while every other control grew to
        44px on touch. 2.75rem = 44px at the default root size. */

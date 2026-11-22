@@ -46,8 +46,136 @@
     return ramp[index % ramp.length];
   };
 
-  const fmt = (n) => new Intl.NumberFormat(state.lang === "zh" ? "zh-CN" : "en-US").format(Math.trunc(Number(n) || 0));
-  const short = (s, n = 34) => (s && s.length > n ? s.slice(0, n - 1) + "…" : (s || "—"));
+  /* -------------------------------------------------------------- settings
+
+     Every setting is one entry in SETTINGS: what to render, what it may be,
+     where it is stored and which CSS custom property it drives. Rendering,
+     loading, saving and resetting all walk this list, so adding a setting is
+     a config entry plus its i18n labels -- no new markup and no new handlers.
+
+     Why `html { font-size }` rather than a multiplier on every text token:
+     the stylesheet is entirely in rem (typography guide), so the root size is
+     the ONE place that scales everything. A per-token multiplier would have to
+     be threaded through every var() and would still miss `clamp()` ranges.
+
+     Why the font stack is a token (`--font-ui`) rather than a body rule: the
+     canvas chart sets its own `ctx.font`, so the stack must be readable from
+     JS to keep the axis labels in the same typeface as the page.
+
+     Storage: one flat key per setting (`atr.fs`, `atr.ff`) instead of a single
+     `atr.settings` JSON blob. The existing language preference is already a
+     flat key (`atr.lang`) and the inline <head> script below must read these
+     before first paint; a flat key parses with no JSON.parse and cannot be
+     corrupted by one bad write. A blob would also have to be re-serialised on
+     every change, so one broken field would lose the others. */
+  const SETTINGS = [
+    {
+      key: "fs",                      // localStorage: atr.fs
+      attr: "data-fs",                // <html data-fs="...">
+      type: "segmented",
+      label: "settings.fontSize",
+      hint: "settings.fontSize.hint",
+      // Root font-size per step. 100% is the stylesheet's design size
+      // (base = 13px), so "Normal" is exactly today's look.
+      //   小    90%  -> base 11.7px
+      //   标准 100%  -> base 13px   (default)
+      //   大   115%  -> base 14.95px
+      //   特大 130%  -> base 16.9px
+      // Multiplied in JS and written as a percentage on <html>, so the user's
+      // browser zoom preference still compounds rather than being overridden.
+      options: [
+        { value: "small", pct: 90, label: "settings.fs.small" },
+        { value: "normal", pct: 100, label: "settings.fs.normal" },
+        { value: "large", pct: 115, label: "settings.fs.large" },
+        { value: "xlarge", pct: 130, label: "settings.fs.xlarge" },
+      ],
+      fallback: "normal",
+      // Writes the scale and reveals it to CSS as one custom property.
+      apply(value) {
+        const opt = this.options.find((o) => o.value === value) || this.options[1];
+        document.documentElement.style.fontSize = `${opt.pct}%`;
+        document.documentElement.dataset.fs = opt.value;
+      },
+    },
+    {
+      key: "ff",                      // localStorage: atr.ff
+      attr: "data-ff",                // <html data-ff="...">
+      type: "segmented",
+      label: "settings.fontFamily",
+      hint: "settings.fontFamily.hint",
+      // Installed-font stacks only: the project makes no network requests, so
+      // a webfont is not an option. Each stack ends in a generic family so a
+      // machine missing the named face still lands somewhere sane.
+      options: [
+        {
+          value: "system",
+          label: "settings.ff.system",
+          // Same stack the stylesheet shipped with; the default.
+          stack: 'system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif',
+        },
+        {
+          value: "sans",
+          label: "settings.ff.sans",
+          stack: '"Inter", "Segoe UI Variable Text", "Segoe UI", "Helvetica Neue", Arial, "Microsoft YaHei", sans-serif',
+        },
+        {
+          value: "serif",
+          label: "settings.ff.serif",
+          stack: 'Georgia, "Noto Serif", "Source Han Serif SC", "Songti SC", "SimSun", serif',
+        },
+        {
+          value: "mono",
+          label: "settings.ff.mono",
+          stack: '"Cascadia Code", "Cascadia Mono", Consolas, "SF Mono", "DejaVu Sans Mono", "Microsoft YaHei Mono", monospace',
+        },
+      ],
+      fallback: "system",
+      apply(value) {
+        const opt = this.options.find((o) => o.value === value) || this.options[0];
+        // Only the token is written; the stylesheet applies it to <html>.
+        document.documentElement.style.setProperty("--font-ui", opt.stack);
+        document.documentElement.dataset.ff = opt.value;
+      },
+    },
+  ];
+
+  const settingStore = {
+    read(setting) {
+      try {
+        const v = localStorage.getItem(`atr.${setting.key}`);
+        if (v && setting.options.some((o) => o.value === v)) return v;
+      } catch { /* private mode: fall through to the default */ }
+      return setting.fallback;
+    },
+    write(setting, value) {
+      try { localStorage.setItem(`atr.${setting.key}`, value); } catch { /* ignore */ }
+    },
+    clear(setting) {
+      try { localStorage.removeItem(`atr.${setting.key}`); } catch { /* ignore */ }
+    },
+  };
+
+  /** Apply one setting, plus the side effects a pure CSS change cannot cover. */
+  function applySetting(setting, value) {
+    setting.apply(value);
+    // A canvas does not inherit CSS: the chart bakes its font and size in at
+    // draw time, so both settings must force a redraw (same reasoning as the
+    // prefers-color-scheme listener).
+    if (state.trend) renderChart(state.trend);
+  }
+
+  function applyAllSettings() {
+    for (const s of SETTINGS) applySetting(s, settingStore.read(s));
+  }
+
+  /** Current value of every setting, as a plain object. */
+  function readSettings() {
+    const out = {};
+    for (const s of SETTINGS) out[s.key] = settingStore.read(s);
+    return out;
+  }
+
+  const fmt = (n) => new Intl.NumberFormat(state.lang === "zh" ? "zh-CN" : "en-US").format(Math.trunc(Number(n) || 0));  const short = (s, n = 34) => (s && s.length > n ? s.slice(0, n - 1) + "…" : (s || "—"));
   const time = (ms) => (ms
     ? new Date(Number(ms)).toLocaleString(state.lang === "zh" ? "zh-CN" : "en-US", { hour12: false })
     : "—");
@@ -921,8 +1049,14 @@
 
     ctx.clearRect(0, 0, cssW, cssH);
     // rem, not px: Canvas2D parses the CSS font shorthand, so the label follows
-    // the user's browser font-size preference just like the DOM text.
-    ctx.font = "0.6875rem system-ui, -apple-system, 'Segoe UI', sans-serif";
+    // the user's browser font-size preference just like the DOM text. The
+    // family comes from the live --font-ui token, so a typeface chosen in
+    // Settings reaches the axis labels too instead of leaving them on the
+    // system stack while the rest of the page changes.
+    const fontFamily = getComputedStyle(document.documentElement)
+      .getPropertyValue("--font-ui").trim()
+      || "system-ui, sans-serif";
+    ctx.font = `0.6875rem ${fontFamily}`;
     ctx.textBaseline = "middle";
 
     // horizontal grid only -- the tick text is DOM so it can stick
@@ -1453,6 +1587,10 @@
     for (const b of $("langSwitch").querySelectorAll("button")) {
       b.setAttribute("aria-pressed", String(b.dataset.lang === state.lang));
     }
+    // The settings panel is built from the string table, so its labels have to
+    // be rebuilt when the language changes. Re-rendering also re-checks the
+    // right radio, which keeps the stored value and the visible state in sync.
+    if ($("settingsBody")) renderSettings();
   }
 
   /* ------------------------------------------------------------------ data */
@@ -1514,6 +1652,119 @@
     }
   }
 
+  /* ------------------------------------------------- settings dialog (dom)
+
+     A segmented control per setting, built from SETTINGS. Real radio inputs
+     rather than buttons: radio gives arrow-key navigation and a single
+     accessible name per group for free, and the label wraps the input so the
+     whole segment is the hit target. */
+  function renderSettings() {
+    const body = $("settingsBody");
+    if (!body) return;
+    body.replaceChildren();
+
+    const current = readSettings();
+    for (const s of SETTINGS) {
+      const group = document.createElement("fieldset");
+      group.className = "setting";
+      group.dataset.setting = s.key;
+
+      const legend = document.createElement("legend");
+      legend.className = "setting-label";
+      legend.textContent = t(s.label);
+      group.appendChild(legend);
+
+      if (s.hint) {
+        const hint = document.createElement("p");
+        hint.className = "setting-hint";
+        hint.id = `setting-${s.key}-hint`;
+        hint.textContent = t(s.hint);
+        group.appendChild(hint);
+        group.setAttribute("aria-describedby", hint.id);
+      }
+
+      const seg = document.createElement("div");
+      seg.className = "setting-seg";
+      for (const opt of s.options) {
+        const label = document.createElement("label");
+        label.className = "setting-opt";
+
+        const input = document.createElement("input");
+        input.type = "radio";
+        input.name = `setting-${s.key}`;
+        input.value = opt.value;
+        input.checked = current[s.key] === opt.value;
+        // The visible span carries the label, so the input itself is only the
+        // state holder; the wrapping <label> supplies its accessible name.
+        input.addEventListener("change", () => {
+          if (!input.checked) return;
+          settingStore.write(s, opt.value);
+          applySetting(s, opt.value);
+          markSettingsDirty(s.key, opt.value);
+        });
+        label.appendChild(input);
+
+        const span = document.createElement("span");
+        span.textContent = t(opt.label);
+        label.appendChild(span);
+        seg.appendChild(label);
+      }
+      group.appendChild(seg);
+      body.appendChild(group);
+    }
+  }
+
+  /** Reflect a changed value in the visible pressed state. */
+  function markSettingsDirty(key, value) {
+    const group = document.querySelector(`#settingsBody [data-setting="${key}"]`);
+    if (!group) return;
+    for (const input of group.querySelectorAll("input[type=radio]")) {
+      input.checked = input.value === value;
+    }
+  }
+
+  function resetSettings() {
+    for (const s of SETTINGS) {
+      settingStore.clear(s);
+      applySetting(s, s.fallback);
+    }
+    renderSettings();
+  }
+
+  /**
+   * Wire the dialog once. Native <dialog> + showModal() already provides the
+   * focus trap, top layer, Esc/back-gesture dismissal and focus return to the
+   * invoker, so none of that is reimplemented here. The only additions are the
+   * fallback open path for browsers without Invoker Commands, and a re-render
+   * on open so the controls show the values that survived a reload.
+   */
+  function wireSettingsDialog() {
+    const dlg = $("settingsDialog");
+    const opener = $("settingsBtn");
+    if (!dlg || !opener) return;
+
+    // Invoker Commands arrived 2025; where it is missing `commandfor` does
+    // nothing, so opening would silently fail on an older browser.
+    if (!("commandForElement" in HTMLButtonElement.prototype)) {
+      opener.addEventListener("click", () => dlg.showModal());
+    }
+
+    // Values may have been changed in another tab; re-read on every open.
+    dlg.addEventListener("beforetoggle", (e) => {
+      if (e.newState === "open") renderSettings();
+    });
+    // Keep the fallback working where `beforetoggle` is unsupported.
+    opener.addEventListener("click", () => renderSettings());
+
+    $("settingsReset").addEventListener("click", resetSettings);
+
+    dlg.addEventListener("close", () => {
+      // Focus return is the browser's job; this only covers the case where the
+      // dialog was closed by clicking the backdrop while focus sat inside.
+      if (!dlg.open && document.activeElement === document.body) opener.focus();
+    });
+  }
+
   /* ------------------------------------------------------------------ init */
 
   async function init() {
@@ -1560,6 +1811,12 @@
     $("autoScan").addEventListener("change", (ev) => {
       if (ev.target.checked) startAuto(); else stopAuto();
     });
+
+    // Settings are applied before the first data load so the page never paints
+    // at the default size and then jump (the inline <head> script has already
+    // done this for a cold load; this covers a same-document re-init).
+    applyAllSettings();
+    wireSettingsDialog();
 
     function startAuto() {
       stopAuto();

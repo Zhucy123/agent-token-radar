@@ -187,7 +187,7 @@ agent-token-radar desktop                       # 原生桌面窗口
 
 ```bash
 # 测试（需要 PYTHONPATH 指向 tests）
-PYTHONPATH=tests python -m unittest discover -s tests -p 'test_*.py'   # 166 个测试
+PYTHONPATH=tests python -m unittest discover -s tests -p 'test_*.py'   # 186 个测试
 
 # 扫描冒烟
 python -m agent_token_radar scan

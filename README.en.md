@@ -218,7 +218,7 @@ English.
 
 ```bash
 # tests (PYTHONPATH must point at tests/)
-PYTHONPATH=tests python -m unittest discover -s tests -p 'test_*.py'   # 166 tests
+PYTHONPATH=tests python -m unittest discover -s tests -p 'test_*.py'   # 186 tests
 
 # scan smoke test
 python -m agent_token_radar scan
