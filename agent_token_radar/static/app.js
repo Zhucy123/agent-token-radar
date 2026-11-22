@@ -2467,6 +2467,17 @@
       }
     };
 
+    // A message with no detail ("Update failed: " and nothing after it) is worse
+    // than a generic one: it looks like the app broke without saying how. The
+    // server always sends a reason, but a bare 409 from an older build, or an
+    // exception with an empty string, would otherwise render as a blank.
+    const failureText = (err) => {
+      const detail = (err == null ? "" : String(err)).trim();
+      return detail
+        ? t("update.applyFailed", { err: detail })
+        : t("update.applyFailedNoDetail");
+    };
+
     // Poll the download while it runs. The installer replaces this process, so
     // "launched" is the last state the page will ever see.
     const watchApply = () => {
@@ -2490,7 +2501,7 @@
           }
           return; // the installer owns the rest
         } else if (s.phase === "failed") {
-          if (line) line.textContent = t("update.applyFailed", { err: s.error || "" });
+          if (line) line.textContent = failureText(s.error);
           if (applyBtn) applyBtn.disabled = false;
           return;
         }
@@ -2509,16 +2520,16 @@
           const r = await api("/api/update/apply", { method: "POST" });
           if (!r || !r.ok) {
             const line = $("updateStatus");
-            if (line) {
-              line.textContent = t("update.applyFailed", {
-                err: (r && r.message) || "",
-              });
-            }
+            if (line) line.textContent = failureText(r && r.message);
             applyBtn.disabled = false;
             return;
           }
           watchApply();
-        } catch {
+        } catch (e) {
+          // api() throws on any non-2xx, so the reason arrives as "409 Conflict"
+          // rather than the JSON body. Showing that is still better than a blank.
+          const line = $("updateStatus");
+          if (line) line.textContent = failureText(e && e.message);
           applyBtn.disabled = false;
         }
       });

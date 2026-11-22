@@ -12,8 +12,12 @@ more reason to open a modal, when the answer ("you are current") is one word.
 
 from __future__ import annotations
 
+import json
 import re
+import shutil
+import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -21,6 +25,7 @@ ROOT = Path(__file__).resolve().parents[1]
 INDEX = ROOT / "agent_token_radar" / "static" / "index.html"
 APP_JS = ROOT / "agent_token_radar" / "static" / "app.js"
 APP_CSS = ROOT / "agent_token_radar" / "static" / "app.css"
+NODE = shutil.which("node")
 
 sys.path.insert(0, str(ROOT))
 from agent_token_radar.i18n import STRINGS  # noqa: E402
@@ -177,6 +182,106 @@ class UpdateStyleTests(unittest.TestCase):
         js = _js()
         self.assertIn("update.available", js,
                       "the panel must also state the update in words")
+
+
+class UpdateFailureMessageTests(unittest.TestCase):
+    """A failure must never render as "Update failed:" with nothing after it.
+
+    This shipped once: the source build's POST /api/update/apply answers 409,
+    api() throws on non-2xx, and the old catch block only re-enabled the button
+    -- so the panel was left showing whatever it had, and the direct-branch path
+    formatted an empty ``message`` into the template. A blank reason reads as
+    "the app broke and will not say how", which is worse than a generic line.
+
+    The formatter is executed here, not merely matched: a string check cannot
+    tell an empty-reason fallback from a template that still renders blanks.
+    """
+
+    def _run_formatter(self, cases: list[str]) -> dict:
+        """Execute the real failureText() from app.js against the given inputs."""
+        if not NODE:
+            self.skipTest("node not available")
+        js = _js()
+        start = js.index("const failureText")
+        end = js.index("\n    };", start) + len("\n    };")
+        impl = js[start:end]
+        script = """
+            const STRINGS = %s;
+            const t = (key, vars) => {
+              let s = STRINGS[key] || key;
+              for (const [k, v] of Object.entries(vars || {})) {
+                s = s.split("{" + k + "}").join(v);
+              }
+              return s;
+            };
+            %s
+            const cases = %s;
+            const out = cases.map((c) => failureText(c));
+            console.log(JSON.stringify(out));
+        """
+        code = script % (
+            json.dumps({"update.applyFailed": STRINGS["zh"]["update.applyFailed"],
+                        "update.applyFailedNoDetail":
+                            STRINGS["zh"]["update.applyFailedNoDetail"]},
+                       ensure_ascii=False),
+            impl,
+            json.dumps(cases),
+        )
+        with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False,
+                                         encoding="utf-8") as fh:
+            fh.write(code)
+            path = fh.name
+        try:
+            # Node writes UTF-8; without an explicit encoding Python decodes
+            # with the ANSI code page (GBK here) and the reader thread dies on
+            # the Chinese text, leaving stdout as None.
+            res = subprocess.run([NODE, path], capture_output=True, text=True,
+                                 encoding="utf-8", timeout=30)
+        finally:
+            Path(path).unlink(missing_ok=True)
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertTrue(res.stdout, f"no output from node: {res.stderr!r}")
+        return json.loads(res.stdout)
+
+    def test_empty_reason_does_not_render_a_dangling_colon(self) -> None:
+        """The actual bug: ``更新失败：`` with nothing behind it."""
+        out = self._run_formatter(["", None, "   "])
+        for text in out:
+            self.assertNotRegex(
+                text, r"[：:]\s*$",
+                f"a blank reason left a dangling colon: {text!r}")
+            self.assertIn(STRINGS["zh"]["update.applyFailedNoDetail"], text)
+
+    def test_a_real_reason_is_still_shown(self) -> None:
+        """The fallback must not swallow the useful case."""
+        out = self._run_formatter(["安装包地址不是 HTTPS，已拒绝下载"])
+        self.assertIn("HTTPS", out[0])
+
+    def test_both_apply_paths_use_the_formatter(self) -> None:
+        """Polling a failed download and a rejected POST are different paths.
+
+        Fixing only one leaves the other able to show a blank.
+        """
+        js = _js()
+        self.assertEqual(
+            js.count("failureText("), 3,
+            "expected the definition plus both apply paths to call it")
+
+    def test_caught_error_is_surfaced_not_swallowed(self) -> None:
+        """api() throws '409 Conflict' for the source build; that must show."""
+        js = _js()
+        # The polling GET shares this path prefix, so anchor on the POST.
+        start = js.index('api("/api/update/apply", { method: "POST" })')
+        block = js[start:start + 900]
+        self.assertIn("catch (e)", block,
+                      "the catch must bind the error, not discard it")
+        self.assertIn("failureText(e && e.message)", block,
+                      "the HTTP status is the only detail available there")
+
+    def test_no_detail_message_exists_in_both_languages(self) -> None:
+        for lang in ("zh", "en"):
+            self.assertIn("update.applyFailedNoDetail", STRINGS[lang])
+            self.assertTrue(STRINGS[lang]["update.applyFailedNoDetail"].strip())
 
 
 class UpdateTranslationTests(unittest.TestCase):
