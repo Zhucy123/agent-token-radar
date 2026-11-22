@@ -240,6 +240,35 @@ repeated scan upserts instead of double-counting.
 
 ## Changelog
 
+### 0.0.4
+
+**Added**
+
+- **Update in place** (installed build): "Download" is now an accent-coloured
+  "Update now" primary button. Clicking it downloads the installer, checks its
+  size, runs it, deletes the download afterwards and reopens the app on the new
+  version — no trip to the browser.
+- **Nothing runs until the file has fully arrived**: the download is written under
+  a `.part` name and only renamed once complete, so a crash cannot leave a
+  truncated file that looks installable.
+- **Leftovers are swept at startup**, so a machine rebooted mid-update does not
+  accumulate old 18 MB installers.
+
+**Note**
+
+- **Windows always shows one permission prompt, and that step cannot be
+  skipped** (the installer writes to Program Files). The panel says so *before*
+  you click, rather than letting it look like a failure afterwards. Download,
+  size check, install, cleanup and relaunch are all automatic.
+- A source checkout does not take this path: the panel tells you to update with
+  `git pull` and never fetches an installer.
+- Safety, since this runs a downloaded executable: HTTPS only (a downgrade would
+  let anything on the path swap the binary), the installer size published in the
+  release is compared (which tells a cut-off transfer or a proxy error page apart
+  from a real installer), the download lands in the per-user directory rather
+  than the install directory, and it is launched without a shell (so a path with
+  spaces is not split).
+
 ### 0.0.3
 
 **Added**
@@ -250,11 +279,6 @@ repeated scan upserts instead of double-counting.
   without opening anything. It runs once in the background at startup and caches
   the answer for 24 hours (at most one request a day), reading only a version tag
   and sending nothing about you.
-- **One-click update** (installed build): "Update now" downloads the installer,
-  checks its size and origin, runs it, then deletes the download and reopens the
-  app. **Windows shows one permission prompt, and that step cannot be skipped**
-  (the installer writes to Program Files); the panel says so before you click.
-  A source checkout does not take this path — update with `git pull`.
 
 **Note**
 
