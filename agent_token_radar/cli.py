@@ -85,6 +85,18 @@ def fmt(n: int) -> str:
     return f"{int(n):,}"
 
 
+def _hit_cell(value: Any) -> str:
+    """A cache hit rate as a percentage, or a dash when it cannot be computed.
+
+    ``None`` means the underlying row contradicts itself (it claims more cache
+    reads than its own total), so there is no honest percentage. Printing
+    "0.0%" there would state a fact about the data that is not true.
+    """
+    if value is None:
+        return "—"
+    return f"{float(value) * 100:.1f}%"
+
+
 def _table(headers: list[str], rows: list[list[str]], *, right: set[int] | None = None) -> str:
     right = right or set()
     widths = [len(h) for h in headers]
@@ -104,6 +116,11 @@ def _table(headers: list[str], rows: list[list[str]], *, right: set[int] | None 
 
 
 def cmd_scan(args: argparse.Namespace) -> int:
+    # ``scan`` accepted --lang but never read it, so the Chinese UI still
+    # printed English here. Same rule as the dashboard: Chinese mode shows
+    # Chinese, and only field names that ARE the domain vocabulary (agent,
+    # model, token, provider) stay English.
+    zh = normalize_lang(getattr(args, "lang", None)) == "zh"
     only = [x.strip() for x in args.only.split(",")] if args.only else None
     with Scanner() as sc:
         rep = sc.run(only=only)
@@ -113,16 +130,26 @@ def cmd_scan(args: argparse.Namespace) -> int:
              (a.error or "")]
             for a in rep.adapters
         ]
-        print("Scan complete:")
+        print("扫描完成：" if zh else "Scan complete:")
         print(_table(
-            ["AGENT", "SOURCES", "SEEN", "NEW", "UPD", "SAME", "WARN", "ERROR"],
+            ["AGENT", "来源" if zh else "SOURCES", "扫描" if zh else "SEEN",
+             "新增" if zh else "NEW", "更新" if zh else "UPD",
+             "未变" if zh else "SAME", "警告" if zh else "WARN",
+             "错误" if zh else "ERROR"],
             rows, right={1, 2, 3, 4, 5, 6},
         ))
-        print(f"\nTotal new records: {rep.inserted}  (updated: {rep.updated}, "
-              f"unchanged: {sum(a.unchanged for a in rep.adapters)})")
-        print(f"Database rows: {sc.store.count()}  ->  {sc.store.db_path}")
-        if rep.warnings:
-            print(f"Warnings: {len(rep.warnings)} (run with -v to see details)")
+        unchanged = sum(a.unchanged for a in rep.adapters)
+        if zh:
+            print(f"\n新增记录：{rep.inserted}（更新：{rep.updated}，未变：{unchanged}）")
+            print(f"数据库行数：{sc.store.count()}  ->  {sc.store.db_path}")
+            if rep.warnings:
+                print(f"警告：{len(rep.warnings)} 条（加 -v 查看详情）")
+        else:
+            print(f"\nTotal new records: {rep.inserted}  (updated: {rep.updated}, "
+                  f"unchanged: {unchanged})")
+            print(f"Database rows: {sc.store.count()}  ->  {sc.store.db_path}")
+            if rep.warnings:
+                print(f"Warnings: {len(rep.warnings)} (run with -v to see details)")
     return 0
 
 
@@ -157,17 +184,32 @@ def cmd_stats(args: argparse.Namespace) -> int:
             f"Token usage  [{args.range}]   (cost is an estimate from official list prices)"
         )
         print(head)
-        hit = float(t.get("cache_hit") or 0)
-        print(_table(["METRIC", "VALUE"], [
-            ["events", fmt(t["events"])],
-            ["total_tokens", fmt(t["total_tokens"])],
-            ["cache_hit", f"{hit * 100:.1f}%"],
-            ["input_tokens", fmt(t["uncached_input_tokens"])],
-            ["cache_read_tokens", fmt(t["cache_read_tokens"])],
-            ["cache_write_tokens", fmt(t["cache_write_tokens"])],
-            ["output_tokens", fmt(t["output_tokens"])],
-            ["reasoning_tokens", fmt(t["reasoning_tokens"])],
-        ], right={1}))
+        # A NULL hit rate means the data contradicts itself; print a dash
+        # rather than a fabricated 0%.
+        raw_hit = t.get("cache_hit")
+        hit_cell = ("—" if raw_hit is None
+                    else f"{float(raw_hit) * 100:.1f}%")
+        # Cost and coverage belong in the human-readable report: the dashboard
+        # has shown them all along, and a CLI that omits the money makes the
+        # text report quietly less complete than the web one.
+        cost = t.get("cost_usd")
+        ratio = float(t.get("priced_ratio") or 0.0)
+        cost_cell = "—" if cost is None else f"${cost:,.2f}"
+        metric_rows = [
+            ["events" if not zh else "记录数", fmt(t["events"])],
+            ["total_tokens" if not zh else "总 token", fmt(t["total_tokens"])],
+            ["cache_hit" if not zh else "缓存命中率", hit_cell],
+            ["input_tokens" if not zh else "输入 token", fmt(t["uncached_input_tokens"])],
+            ["cache_read_tokens" if not zh else "缓存读 token", fmt(t["cache_read_tokens"])],
+            ["cache_write_tokens" if not zh else "缓存写 token", fmt(t["cache_write_tokens"])],
+            ["output_tokens" if not zh else "输出 token", fmt(t["output_tokens"])],
+            ["reasoning_tokens" if not zh else "推理 token", fmt(t["reasoning_tokens"])],
+            ["cost" if not zh else "参考费用", cost_cell],
+            ["coverage" if not zh else "费用覆盖率", f"{ratio * 100:.1f}%"],
+        ]
+        print(_table(
+            ["METRIC" if not zh else "指标", "VALUE" if not zh else "数值"],
+            metric_rows, right={1}))
 
         if args.by == "agent":
             b = payload["breakdown"]
@@ -175,7 +217,7 @@ def cmd_stats(args: argparse.Namespace) -> int:
             print(_table(
                 ["AGENT", "EVENTS", "TOTAL", "HIT", "INPUT", "CACHE READ", "OUTPUT"],
                 [[x["agent"], fmt(x["events"]), fmt(x["total_tokens"]),
-                  f"{float(x.get('cache_hit') or 0) * 100:.1f}%",
+                  _hit_cell(x.get("cache_hit")),
                   fmt(x["uncached_input_tokens"]),
                   fmt(x["cache_read_tokens"]),
                   fmt(x["output_tokens"])] for x in b],
@@ -190,7 +232,7 @@ def cmd_stats(args: argparse.Namespace) -> int:
                 [[x["agent"], (x["model"] or "(unknown)")[:38],
                   x.get("provider") or "-", fmt(x["events"]),
                   fmt(x["total_tokens"]),
-                  f"{float(x.get('cache_hit') or 0) * 100:.1f}%",
+                  _hit_cell(x.get("cache_hit")),
                   fmt(x["uncached_input_tokens"])] for x in b[:60]],
                 right={3, 4, 5, 6},
             ))

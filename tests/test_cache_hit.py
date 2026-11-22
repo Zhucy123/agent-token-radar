@@ -128,8 +128,78 @@ class UncachedDerivationTests(unittest.TestCase):
         t = self.store.totals()
         # Unclamped on purpose: the bad total surfaces as a negative input.
         self.assertLess(t["uncached_input_tokens"], 0)
-        # ...and the derived rate must still be a sane number, not NaN.
-        self.assertGreaterEqual(t["cache_hit"], 0.0)
+        # The rate cannot be computed from a contradiction, so it is None.
+        self.assertIsNone(t["cache_hit"])
+
+    def test_corrupt_row_reports_no_rate_at_all(self) -> None:
+        """Neither 500% nor 100% nor 0% -- no rate, because none is knowable.
+
+        The denominator is built from the derived uncached value, which goes
+        negative on a row claiming more cache reads than its own total. For
+        total=10, cache_read=50 the denominator collapses to 10 while the
+        numerator stays 50, so the plain division reads 5.0 (500%), which
+        ``app.js`` would have rendered verbatim.
+
+        Clamping to 1.0 fixes the absurd number but replaces it with a subtler
+        lie: a spotless "100%" for data that is broken. NULL is the honest
+        answer, and the UI renders it as a dash.
+        """
+        self.store.upsert_events([
+            ev("x", total=10, output=0, cache_read=50, cache_write=0),
+        ])
+        t = self.store.totals()
+        self.assertIsNone(t["cache_hit"],
+                          "a contradictory row has no defensible hit rate")
+        # The same rule must hold on the per-agent rows.
+        for row in self.store.by_agent():
+            self.assertIsNone(row["cache_hit"])
+
+    def test_merged_rows_report_no_rate_like_the_sql(self) -> None:
+        """The Python mirror must not disagree with the SQL.
+
+        ``by_project`` merges rows in Python and recomputes the rate from the
+        merged sums, so a mirror that merely clamped would report 100% there
+        while the SQL-aggregated views reported None.
+        """
+        self.store.upsert_events([UsageEvent(
+            event_key="p1", agent="x", project="/p",
+            total_tokens=10, output_tokens=0, cache_read_tokens=50,
+        )])
+        merged = self.store.by_project()
+        self.assertEqual(len(merged), 1)
+        self.assertIsNone(merged[0]["cache_hit"])
+
+    def test_every_view_reports_no_rate(self) -> None:
+        """No view may swallow the NULL and show a confident number.
+
+        This is the failure mode that bit twice: the rate itself was fixed, but
+        a caller kept hiding it -- ``totals()`` wrapped the expression in
+        COALESCE(..., 0), and the dashboard card did ``|| 0``. A fix that stops
+        at the expression is not a fix. Every public view is checked here so a
+        new aggregation cannot quietly reintroduce the 100% claim.
+        """
+        self.store.upsert_events([UsageEvent(
+            event_key="bad", agent="x", model="m", project="/p",
+            session_id="s1", timestamp=1789982075201,
+            total_tokens=10, output_tokens=0, cache_read_tokens=50,
+        )])
+        snap = self.store.overview_snapshot()
+        views = {
+            "totals": self.store.totals()["cache_hit"],
+            "by_agent": self.store.by_agent()[0]["cache_hit"],
+            "by_model": self.store.by_model()[0]["cache_hit"],
+            "by_project": self.store.by_project()[0]["cache_hit"],
+            "by_day": self.store.by_day()[0]["cache_hit"],
+            "top_sessions": self.store.top_sessions()[0]["cache_hit"],
+            "snapshot.totals": snap["totals"]["cache_hit"],
+            "snapshot.by_agent": snap["by_agent"][0]["cache_hit"],
+            "snapshot.by_model": snap["by_model"][0]["cache_hit"],
+        }
+        wrong = {k: v for k, v in views.items() if v is not None}
+        self.assertEqual(wrong, {}, "these views hid the unknown rate")
+        # The raw negative input stays visible on every one of them, so the
+        # bad data is still diagnosable.
+        self.assertLess(self.store.totals()["uncached_input_tokens"], 0)
 
 
 class SqlConstantTests(unittest.TestCase):

@@ -58,10 +58,52 @@ logger = logging.getLogger("agent_token_radar.store")
 #: so a row with an empty prompt contributes a 0.0 that drags the total down
 #: (measured: 0% overall against a true 96.8%). Zero when there is no prompt at
 #: all, so an empty dataset cannot divide by zero.
+#:
+#: The result is NULL when the underlying data is self-contradictory. A hit
+#: rate is a ratio and cannot exceed 100%, but the denominator is built from
+#: :data:`UNCACHED_INPUT_SQL`, which goes negative on corrupt input (a row
+#: claiming more cache reads than its own total). One such row -- total=10,
+#: cache_read=50 -- makes the denominator 10 while the numerator stays 50 and
+#: would yield 500%; ``app.js`` only guards against <= 0 and non-finite values,
+#: so that would have been rendered verbatim.
+#:
+#: The obvious fix -- clamp to 1.0 -- is WORSE than the bug: it would show a
+#: spotless "100%" for data that is broken, disguising the defect as a perfect
+#: cache. NULL is the honest answer: no rate can be computed from a
+#: contradiction. The UI already renders NULL as a dash (``moneyCell``'s
+#: convention, and ``pct()`` guards non-finite), so the reader sees "unknown"
+#: rather than a number nobody can defend. ``uncached_input_tokens`` itself is
+#: still reported negative, so the bad row remains visible for diagnosis.
+#:
+#: On sane data this is a no-op: the real database's 77k rows all have
+#: uncached >= 3, so every figure is unchanged.
 CACHE_HIT_SQL = (
-    f"CASE WHEN (SUM({UNCACHED_INPUT_SQL}) + SUM(cache_read_tokens)) > 0 "
-    f"THEN CAST(SUM(cache_read_tokens) AS REAL) "
-    f"/ (SUM({UNCACHED_INPUT_SQL}) + SUM(cache_read_tokens)) ELSE 0.0 END"
+    # A hit rate can never exceed 100% -- cached reads are a subset of the
+    # prompt. Wherever the numbers make that impossible, no rate is knowable
+    # and the answer is NULL, which the UI renders as a dash.
+    #
+    # Three ways the data can be impossible:
+    #   * numerator exceeds the denominator (cached > prompt total)
+    #   * the denominator is negative (the row claims more cache than it has
+    #     tokens at all, so the "prompt" is not a quantity)
+    #
+    # NULL rather than a clamp: clamping printed a spotless "100%" for data
+    # known to be broken, which is a quieter lie than the 500% it replaces.
+    #
+    # A denominator of exactly 0 is the EMPTY case, not a corrupt one (a row
+    # with no prompt at all), and that is a true 0%.
+    #
+    # The numerator/denominator test must be on the ratio, not on the
+    # denominator alone: for total=10, cache_read=50 the denominator is still
+    # positive (-40 + 50 = 10) while the numerator is 50.
+    f"CASE WHEN (SUM({UNCACHED_INPUT_SQL}) + SUM(cache_read_tokens)) = 0 "
+    f"THEN 0.0 "
+    f"WHEN (SUM({UNCACHED_INPUT_SQL}) + SUM(cache_read_tokens)) > 0 "
+    f"AND CAST(SUM(cache_read_tokens) AS REAL) "
+    f"<= (SUM({UNCACHED_INPUT_SQL}) + SUM(cache_read_tokens)) "
+    f"THEN MIN(1.0, CAST(SUM(cache_read_tokens) AS REAL) "
+    f"/ (SUM({UNCACHED_INPUT_SQL}) + SUM(cache_read_tokens))) "
+    f"ELSE NULL END"
 )
 
 #: SQL for one row's reference cost in USD, joined against ``model_prices``.
@@ -779,6 +821,13 @@ class Store:
                     "uncached_input_tokens": 0,
                     "reasoning_tokens": 0,
                     "cost_usd": 0.0,
+                    # Whether ANY row in this group carried a price. Needed
+                    # because 0.0 is a real cost ("priced, and it rounded to
+                    # nothing") while "no priced row at all" must stay NULL and
+                    # render as a dash -- never as a free-looking $0.00. The
+                    # per-agent rows below already distinguish the two; the
+                    # project total used to collapse them into 0.0.
+                    "has_cost": False,
                     "priced_tokens": 0,
                     "agents": [],
                 }
@@ -790,6 +839,7 @@ class Store:
             row_cost = r["cost_usd"]
             if row_cost is not None:
                 bucket["cost_usd"] += float(row_cost)
+                bucket["has_cost"] = True
             bucket["agents"].append({
                 "agent": str(r["agent"] or ""),
                 "events": int(r["events"] or 0),
@@ -799,17 +849,24 @@ class Store:
                 "cache_read_tokens": int(r["cache_read_tokens"] or 0),
                 "cache_write_tokens": int(r["cache_write_tokens"] or 0),
                 "uncached_input_tokens": int(r["uncached_input_tokens"] or 0),
-                "cache_hit": float(r["cache_hit"] or 0.0),
+                # None (not 0.0) when the data is self-contradictory: the UI
+                # must show "unknown", not a confident 0%.
+                "cache_hit": (None if r["cache_hit"] is None
+                              else float(r["cache_hit"])),
                 "cost_usd": (None if row_cost is None else float(row_cost)),
                 "priced_tokens": int(r["priced_tokens"] or 0),
             })
 
         out: list[dict[str, Any]] = []
         for bucket in merged.values():
-            prompt = bucket["uncached_input_tokens"] + bucket["cache_read_tokens"]
-            bucket["cache_hit"] = (
-                bucket["cache_read_tokens"] / prompt if prompt > 0 else 0.0
-            )
+            # Reuse the shared mirror instead of dividing here: this site had
+            # its own copy of the formula, which is how it kept an unclamped
+            # 500% after the SQL and the mirror were both fixed.
+            bucket["cache_hit"] = self._cache_hit(bucket)
+            # No priced row in this project at all -> NULL, so the UI shows a
+            # dash. Hiding that as $0.00 would claim the project was free.
+            if not bucket.pop("has_cost"):
+                bucket["cost_usd"] = None
             # Agents inside a project are ordered by their own spend.
             bucket["agents"].sort(key=lambda a: -a["total_tokens"])
             out.append(bucket)
@@ -950,9 +1007,12 @@ class Store:
         )
         sel = ", ".join(f"COALESCE(SUM({c}),0)" for c in cols)
         row = self.con.execute(
+            # CACHE_HIT_SQL is NOT wrapped in COALESCE here: its NULL is
+            # meaningful ("the data contradicts itself, so there is no honest
+            # rate") and COALESCE would turn that back into a confident 0.0.
             f"""SELECT COUNT(*), {sel},
                        COALESCE(SUM({UNCACHED_INPUT_SQL}),0),
-                       COALESCE({CACHE_HIT_SQL},0),
+                       {CACHE_HIT_SQL},
                        COALESCE(SUM({COST_ROW_SQL}),0),
                        COALESCE({PRICED_TOKENS_SQL},0)
                 FROM usage_events {PRICE_JOIN_SQL} {where}""",
@@ -966,7 +1026,10 @@ class Store:
         # the raw input column means different things per agent (see
         # UNCACHED_INPUT_SQL).
         out["uncached_input_tokens"] = int(row[7] or 0)
-        out["cache_hit"] = float(row[8] or 0.0)
+        # NULL means "the data contradicts itself, so there is no honest rate".
+        # Coercing that to 0.0 would report a confident "0% cached" for data we
+        # know is broken -- the same lie as clamping it to 100%.
+        out["cache_hit"] = (None if row[8] is None else float(row[8]))
         out["cost_usd"] = float(row[9] or 0.0)
         # `cost_usd` is a SUM over priced rows only. `priced_tokens` says how
         # much of the usage that sum actually represents, so the UI can state
@@ -1251,11 +1314,24 @@ class Store:
         )
 
     @staticmethod
-    def _cache_hit(row: Mapping[str, Any]) -> float:
-        """Python mirror of :data:`CACHE_HIT_SQL`, for merged rows."""
+    def _cache_hit(row: Mapping[str, Any]) -> float | None:
+        """Python mirror of :data:`CACHE_HIT_SQL`, for merged rows.
+
+        Returns None when cached reads exceed the prompt total, which proves
+        the row contradicts itself. A clamp would dress broken data up as a
+        perfect cache hit; a dash is the honest answer.
+
+        This mirror must stay in step with the SQL above, or merged rows (which
+        are recomputed in Python) would disagree with rows aggregated straight
+        from the database.
+        """
         cached = int(row.get("cache_read_tokens") or 0)
         denom = int(row.get("uncached_input_tokens") or 0) + cached
-        return (cached / denom) if denom else 0.0
+        if denom == 0:
+            return 0.0
+        if denom < 0 or cached > denom:
+            return None
+        return min(1.0, max(0.0, cached / denom))
 
     def top_sessions(
         self,

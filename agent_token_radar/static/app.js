@@ -219,8 +219,9 @@
     $("v-total").textContent = fmt(totals.total_tokens);
     // The hit rate is computed server-side over the aggregate (SUM(cached) /
     // SUM(uncached + cached)), never by averaging per-row ratios.
-    const hit = Number(totals.cache_hit || 0);
-    $("v-hit").textContent = `${(hit * 100).toFixed(hit >= 0.995 ? 0 : 1)}%`;
+    // A null means the data contradicts itself, so the card shows a dash
+    // rather than a confident percentage (Number(null) would be 0).
+    $("v-hit").textContent = pct(totals.cache_hit);
     // "Input" here is the UNCACHED input, not the raw input column: agents
     // disagree about whether input_tokens already contains the cache buckets
     // (Codex includes it, DSH does not), so the raw column is not comparable
@@ -281,9 +282,15 @@
    * Cache hit rate as a percentage string.
    *
    * Rounded to one decimal, except that a near-total hit rate reads better as
-   * "100%" than as "99.99%". Zero (or a missing value) renders "0%".
+   * "100%" than as "99.99%". A true zero (or a missing value) renders "0%".
+   *
+   * null means the backend could not compute an honest rate because the row
+   * contradicts itself (more cache reads than its own total). That renders a
+   * dash, not "0%": claiming a confident zero would state something about the
+   * data we know is untrue. Number(null) is 0, so this check must come first.
    */
   function pct(ratio) {
+    if (ratio === null || ratio === undefined) return "—";
     const r = Number(ratio);
     if (!isFinite(r) || r <= 0) return "0%";
     return `${(r * 100).toFixed(r >= 0.995 ? 0 : 1)}%`;

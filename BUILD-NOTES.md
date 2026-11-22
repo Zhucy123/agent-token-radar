@@ -278,10 +278,13 @@ agent_token_radar = ["static/*", "static/**/*", "pricing.json"]
 
 ```bash
 GET /api/overview?range=all
-→ {"pricing": {"model_count": 30, ...}, "totals": {"cost_usd": 1989.55, "priced_ratio": 0.9647}}
+→ {"pricing": {"model_count": 30, ...}, "totals": {"cost_usd": 375.60, "priced_ratio": 0.9621}}
 ```
 
 `model_count: 30` 且 `cost_usd` 不为 0，才说明读到了。只看 `Test-Path` 会被空表骗过去。
+
+（这里的金额是 2026-11-22 修复「inclusive 存法缓存被重复计费」后的实测值。旧文档记的 $1,989.55
+是修复前的数字，已作废——它虚高约 5 倍，不能当验收基线。）
 
 > 与坑 8 同一个模式：**运行时才读的文件 + 打包器 = 静默丢失**。
 > 区别是坑 8 丢的东西会立刻看出来，这个丢了只显示一个无辜的「无公开价」，

@@ -361,6 +361,42 @@ class StoreCostTests(unittest.TestCase):
         self.assertIsNone(rows[0]["cost_usd"])
         self.assertEqual(rows[0]["priced_tokens"], 0)
 
+    def test_unpriced_project_row_reports_null_not_zero(self) -> None:
+        """A whole project with no priced model must be a dash, not $0.00.
+
+        The project total is merged in Python (so per-agent detail survives),
+        and its accumulator started at 0.0. A project whose every row was
+        unpriced therefore rendered "$0.00" -- reading as "this project was
+        free" when the truth is "nobody published a price for its models".
+        by_agent / by_model / the snapshot all already returned None; only the
+        project view collapsed the distinction.
+        """
+        self.store.upsert_events([
+            ev("workbuddy", "hy4std", inp=500_000, out=0, project="/work/unpriced",
+               key="a"),
+        ])
+        rows = self.store.by_project()
+        self.assertEqual(len(rows), 1)
+        self.assertIsNone(rows[0]["cost_usd"],
+                          "an unpriced project must not claim to cost $0.00")
+
+    def test_project_with_one_priced_agent_reports_a_number(self) -> None:
+        """The NULL rule must not swallow a real, priced cost."""
+        project = "/work/mixed"
+        self.store.upsert_events([
+            ev("workbuddy", "hy4std", inp=500_000, out=0, project=project, key="a"),
+            ev("dsh", "deepseek-v4.1-flash", inp=1_000_000, out=0,
+               project=project, key="b", when=PEAK_TUE),
+        ])
+        rows = self.store.by_project()
+        self.assertEqual(len(rows), 1)
+        # 1M input at the peak input rate; the unpriced row adds nothing.
+        self.assertAlmostEqual(rows[0]["cost_usd"], 0.30, places=4)
+        # And the unpriced agent inside it is still NULL, not 0.
+        costs = {a["agent"]: a["cost_usd"] for a in rows[0]["agents"]}
+        self.assertIsNone(costs["workbuddy"])
+        self.assertAlmostEqual(costs["dsh"], 0.30, places=4)
+
     def test_by_agent_sums_row_costs(self) -> None:
         self.store.upsert_events([
             ev("dsh", "deepseek-v4.1-flash", inp=1_000_000, out=0, key="a",
