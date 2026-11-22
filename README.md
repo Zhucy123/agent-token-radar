@@ -1,47 +1,56 @@
 # Agent Token Radar
 
+**简体中文** ｜ [English](README.en.md)
+
 统计本机各个 AI Agent 的 **Token 用量**，并按厂商官方标价给出**参考费用估算**。
 只读扫描本机会话日志 / SQLite，归一化入库，提供 CLI 报表与本地 Web 仪表盘。
 
+**25 个 Agent · 中英双语 · 纯本地 · 无网络请求 · 只读**
+
+<p>
+<a href="#安装"><b>↓ 安装</b></a> ·
+<a href="#使用"><b>↓ 使用</b></a> ·
+<a href="#参考了什么"><b>↓ 参考了什么</b></a> ·
+<a href="#说明与边界"><b>↓ 边界说明</b></a>
+</p>
+
 ![汇总卡片与消耗趋势](docs/app-zh-1.png)
 
-**只统计 Token，费用只是参考估算。** Token 是**测量值**，费用是**推导值**（Token × 官方标价）。
-界面因此强制把「覆盖率」和金额一起显示：没有公开标价的模型标成「无公开价」，绝不算成 0。
-细节见 [PRICING-NOTES.md](PRICING-NOTES.md)。
-
-> English documentation: [README.en.md](README.en.md)
-
-**25 个 Agent · 中英双语 · 纯本地 · 无网络请求 · 只读**
+> **Token 是测量值，费用是推导值。** 费用 = Token × 官方标价，可信度不会超过那张价格表。
+> 因此界面**强制把覆盖率和金额一起显示**：没有公开标价的模型标成「无公开价」，绝不算成 0。
+> 细节见 [PRICING-NOTES.md](PRICING-NOTES.md)。
 
 ---
 
 ## 界面
 
-以下截图取自**实际安装的 Windows 桌面程序**（不是浏览器）。
+以下截图取自**实际安装的 Windows 桌面程序**（不是浏览器标签页）。
 
-按 Model 分布，含每百万 Token 单价与峰谷标注：
+**汇总与趋势**：总用量、缓存命中率、输入/输出/缓存读取/推理六个指标，加参考费用与覆盖率，下面是按 Agent 堆叠的每日消耗趋势。
+
+![汇总卡片与消耗趋势](docs/app-zh-1.png)
+
+**按 Model 分布**：每个 Agent 下的各 Model（及 Provider）用量，含每百万 Token 单价与峰谷标注。
 
 ![按 Model 分布](docs/app-zh-2.png)
 
-按 Session 分布（会话标题取自各 Agent 自己的记录），下面接着是按项目（工作目录）分布：
+**消耗最高的 Top Session**：会话标题取自各 Agent 自己的记录，能看到真实的会话名。
 
-![按 Session 与项目分布](docs/app-zh-3.png)
-
-25 个 Agent 的官方图标，以及页脚的数据来源、定价与分时计价说明：
-
-![数据源与官方图标](docs/app-zh-4.png)
+![消耗最高的 Top Session](docs/app-zh-3.png)
 
 ---
 
 ## 功能
 
-- **25 个 Agent 适配器** — Claude Code、Codex、DSH、Gemini / Antigravity、Hermes、WorkBuddy、Kimi、Copilot、Qoder、Qwen Code、Pi、Prime、CodeBuddy、Command Code、Devin、MiMoCode、MiniMax、OpenCode、ZCode、Muse 等
-- **多维度统计** — 按 Agent / Model / Provider / 项目（工作目录）/ Session / 天
-- **缓存命中率** — 先聚合再相除，不平均每行比率（详见 [DESIGN.md](DESIGN.md)）
-- **参考费用估算** — 按厂商官方标价，支持分时计价（DeepSeek 峰谷按每条请求自身时间判断）
-- **中英双语** — 严格分离，中文模式只显示中文
-- **官方图标** — 25 个 Agent 全部用厂商官方标识，内嵌 SVG，离线可用
-- **桌面版** — Windows 安装包，免 Python 环境
+| | |
+|---|---|
+| **25 个 Agent 适配器** | Claude Code、Codex、DSH、Gemini / Antigravity、Hermes、WorkBuddy、Kimi、Copilot、Qoder、Qwen Code、Pi、Prime、CodeBuddy、Command Code、Devin、MiMoCode、MiniMax、OpenCode、ZCode、Muse 等 |
+| **多维度统计** | 按 Agent / Model / Provider / 项目（工作目录）/ Session / 天 |
+| **缓存命中率** | 先聚合再相除，不平均每行比率（详见 [DESIGN.md](DESIGN.md)） |
+| **参考费用估算** | 按厂商官方标价，支持分时计价（DeepSeek 峰谷按每条请求自身时间判断） |
+| **中英双语** | 严格分离，中文模式只显示中文 |
+| **官方图标** | 25 个 Agent 全部用厂商官方标识，内嵌 SVG，离线可用 |
+| **桌面版** | Windows 安装包，免 Python 环境 |
 
 ---
 
@@ -70,6 +79,15 @@ pip install "agent-token-radar[web] @ git+https://github.com/Zhucy123/agent-toke
 
 需要 Python **3.11+**。DSH 的 `.zstd` 会话日志在 3.14+ 用标准库解压；3.11–3.13 请加 `pip install zstandard`（或只用 `.jsonl` 回退）。
 
+### 从源码运行
+
+```bash
+git clone https://github.com/Zhucy123/agent-token-radar
+cd agent-token-radar
+pip install -e ".[web]"          # 桌面版再加 pip install pywebview
+python -m agent_token_radar serve
+```
+
 ---
 
 ## 使用
@@ -83,7 +101,9 @@ agent-token-radar serve                         # 仪表盘 http://127.0.0.1:877
 agent-token-radar desktop                       # 原生桌面窗口
 ```
 
-装好之后在任意目录都能运行。数据库位置：
+装好之后在任意目录都能运行。
+
+**数据库位置**
 
 | 平台 | 路径 |
 |---|---|
@@ -96,15 +116,6 @@ agent-token-radar desktop                       # 原生桌面窗口
 想固定端口、被占即报错退出，加 `--no-fallback`。
 
 **语言切换**：`stats --lang en`，或 Web 右上角 `中文 / EN`，或用 URL 参数 `?lang=en`。
-
-### 从源码运行
-
-```bash
-git clone https://github.com/Zhucy123/agent-token-radar
-cd agent-token-radar
-pip install -e ".[web]"          # 桌面版再加 pip install pywebview
-python -m agent_token_radar serve
-```
 
 ---
 

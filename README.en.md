@@ -1,21 +1,28 @@
 # Agent Token Radar
 
+[简体中文](README.md) ｜ **English**
+
 Measures **token usage** for every AI agent on your machine and turns it into a
 **reference cost estimate** at the vendor's own list prices. It scans each
 agent's session logs / SQLite read-only, normalises everything into one local
 database, and serves it through a CLI report and a local web dashboard.
 
+**25 agents · Chinese/English · fully local · no network requests · read-only**
+
+<p>
+<a href="#install"><b>↓ Install</b></a> ·
+<a href="#usage"><b>↓ Usage</b></a> ·
+<a href="#what-this-is-based-on"><b>↓ What this is based on</b></a> ·
+<a href="#scope-and-limits"><b>↓ Scope and limits</b></a>
+</p>
+
 ![Summary cards and usage trend](docs/app-en-1.png)
 
-**Tokens are measured; cost is derived.** A cost is always `tokens × official
-list price`, so it can never be more trustworthy than the price table. The
-dashboard therefore always shows the **coverage ratio** next to any amount, and a
-model with no published price is reported as *unpriced* rather than counted as
-zero. Details in [PRICING-NOTES.md](PRICING-NOTES.md).
-
-> 中文文档见 [README.md](README.md)
-
-**25 agents · Chinese/English · fully local · no network requests · read-only**
+> **Tokens are measured; cost is derived.** A cost is always `tokens × official
+> list price`, so it can never be more trustworthy than the price table. The
+> dashboard therefore always shows the **coverage ratio** next to any amount, and a
+> model with no published price is reported as *unpriced* rather than counted as
+> zero. Details in [PRICING-NOTES.md](PRICING-NOTES.md).
 
 ---
 
@@ -24,31 +31,35 @@ zero. Details in [PRICING-NOTES.md](PRICING-NOTES.md).
 All screenshots below are the **real installed Windows desktop app**, not a
 browser tab.
 
-Usage by Model, with the per-1M unit price and peak/off-peak marking:
+**Summary and trend** — total tokens, cache-hit rate, input / output / cache read /
+reasoning, plus the reference cost and the share of tokens it covers, over a
+per-day trend stacked by agent.
+
+![Summary cards and usage trend](docs/app-en-1.png)
+
+**Usage by Model** — every agent broken down by Model and Provider, with the
+per-1M unit price and the peak/off-peak marking.
 
 ![Usage by Model](docs/app-en-2.png)
 
-Usage by Session on top (titles come from each agent's own records), then usage
-by project — the agent's working directory:
+**Top Sessions by usage** — session titles come from each agent's own records, so
+you see the real conversation names.
 
-![Usage by Session and project](docs/app-en-3.png)
-
-The 25 official agent icons, plus the footer stating where prices come from and
-how time-of-day billing works:
-
-![Data sources and official icons](docs/app-en-4.png)
+![Top Sessions by usage](docs/app-en-3.png)
 
 ---
 
 ## What it does
 
-- **25 agent adapters** — Claude Code, Codex, DSH, Gemini / Antigravity, Hermes, WorkBuddy, Kimi, Copilot, Qoder, Qwen Code, Pi, Prime, CodeBuddy, Command Code, Devin, MiMoCode, MiniMax, OpenCode, ZCode, Muse and more
-- **Six dimensions** — by Agent / Model / Provider / project (working directory) / Session / day
-- **Cache-hit rate** — aggregated first, then divided; per-row ratios are never averaged (see [DESIGN.md](DESIGN.md))
-- **Reference cost** — from official list prices, including time-of-day billing (DeepSeek peak/off-peak is decided per request from that request's own timestamp)
-- **Strict bilingual UI** — Chinese mode shows Chinese only, English mode English only
-- **Official icons** — all 25 use the vendor's own mark, embedded as SVG, works offline
-- **Desktop build** — a Windows installer needs no Python at all
+| | |
+|---|---|
+| **25 agent adapters** | Claude Code, Codex, DSH, Gemini / Antigravity, Hermes, WorkBuddy, Kimi, Copilot, Qoder, Qwen Code, Pi, Prime, CodeBuddy, Command Code, Devin, MiMoCode, MiniMax, OpenCode, ZCode, Muse and more |
+| **Six dimensions** | by Agent / Model / Provider / project (working directory) / Session / day |
+| **Cache-hit rate** | aggregated first, then divided; per-row ratios are never averaged (see [DESIGN.md](DESIGN.md)) |
+| **Reference cost** | from official list prices, including time-of-day billing (DeepSeek peak/off-peak is decided per request from that request's own timestamp) |
+| **Strict bilingual UI** | Chinese mode shows Chinese only, English mode English only |
+| **Official icons** | all 25 use the vendor's own mark, embedded as SVG, works offline |
+| **Desktop build** | a Windows installer needs no Python at all |
 
 ---
 
@@ -83,6 +94,15 @@ Requires Python **3.11+**. DSH's `.zstd` session logs decompress with the
 standard library on 3.14+; on 3.11–3.13 add `pip install zstandard` (or fall
 back to `.jsonl` only).
 
+### From source
+
+```bash
+git clone https://github.com/Zhucy123/agent-token-radar
+cd agent-token-radar
+pip install -e ".[web]"          # for the desktop window also: pip install pywebview
+python -m agent_token_radar serve
+```
+
 ---
 
 ## Usage
@@ -96,7 +116,9 @@ agent-token-radar serve                         # dashboard at http://127.0.0.1:
 agent-token-radar desktop                       # native desktop window
 ```
 
-Works from any directory once installed. The database lives at:
+Works from any directory once installed.
+
+**Database location**
 
 | Platform | Path |
 |---|---|
@@ -110,15 +132,6 @@ used. Add `--no-fallback` to fail instead of moving.
 
 **Language**: `stats --lang en`, the `中文 / EN` toggle in the dashboard, or the
 URL parameter `?lang=en`.
-
-### From source
-
-```bash
-git clone https://github.com/Zhucy123/agent-token-radar
-cd agent-token-radar
-pip install -e ".[web]"          # for the desktop window also: pip install pywebview
-python -m agent_token_radar serve
-```
 
 ---
 
