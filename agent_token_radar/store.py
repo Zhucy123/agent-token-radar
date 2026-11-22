@@ -38,29 +38,17 @@ from .base import (
 )
 from .paths import default_db_path, ensure_own_dirs
 from .pricing import PriceTable, cost_sql, ensure_price_table, money
+from .pricing import UNCACHED_INPUT_SQL
 from .provider_sources import SOURCE_STRENGTH
 
 logger = logging.getLogger("agent_token_radar.store")
 
-#: SQL for "how many tokens were actually sent uncached".
-#:
-#: Agents disagree about whether ``input_tokens`` already contains the cache
-#: buckets, and the dashboard must not show a number that depends on which
-#: parser wrote the row:
-#:
-#: * **additive** (DSH, Claude, Gemini, Hermes): input EXCLUDES cache, and the
-#:   agent's own total is ``input + output + cache_read + cache_write``.
-#: * **inclusive** (Codex, WorkBuddy): input is the full prompt size INCLUDING
-#:   cache hits, and the agent's total is just ``input + output``. Codex stores
-#:   ``input_tokens=572,797,230`` against ``cached_input_tokens=558,823,552`` --
-#:   reading that input column as "uncached" overstates it 41x.
-#:
-#: Both conventions satisfy ``total = uncached + output + cache_read +
-#: cache_write``, so this one expression is exact for every agent (verified:
-#: no negative results across 73k rows) and no migration is needed.
-UNCACHED_INPUT_SQL = (
-    "(total_tokens - output_tokens - cache_read_tokens - cache_write_tokens)"
-)
+# ``UNCACHED_INPUT_SQL`` is DEFINED in :mod:`pricing` (and re-imported above) so
+# that the display aggregates here and ``COST_ROW_SQL`` there share one
+# definition: agents disagree about whether ``input_tokens`` already contains
+# the cache buckets, and billing the raw input column double-charges the cache
+# hits of the inclusive agents (Codex, WorkBuddy). Two copies of that expression
+# is exactly how the display and the money drifted apart before.
 
 #: SQL for the cache hit rate in [0, 1]: cached reads over all prompt tokens.
 #:

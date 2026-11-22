@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import sys
 import unittest
 from pathlib import Path
 
@@ -414,6 +415,65 @@ class TestDevin(_Base):
         self.assertEqual(len(r.events), 1, "sibling-node duplicate must collapse")
         self.assertTok(t, events=1, input_tokens=500, output_tokens=50,
                        cache_read_tokens=200, total_tokens=750)
+
+    def test_event_key_is_stable_across_processes(self) -> None:
+        """The key must survive a new interpreter, not just the same one.
+
+        The old key used Python's built-in ``hash()`` on a string, which is
+        randomised per process (PYTHONHASHSEED) unless that variable is set.
+        Every scan therefore produced a different event_key, the UPSERT never
+        matched the row from the previous scan, and re-scanning the same file
+        multiplied the usage.
+
+        Two CHILD processes with DIFFERENT explicit seeds are compared, and the
+        parent is never one of them. Comparing a parent against one child is not
+        enough: if the ambient environment already sets PYTHONHASHSEED to that
+        same value, the old buggy code agrees with itself and the test passes
+        while the bug is still there (verified -- with ambient seed 12345 the
+        reverted implementation passed). Two different seeds make the check
+        independent of whatever the environment happens to set.
+        """
+        p = self.root / "sessions.db"
+        con = sqlite3.connect(p)
+        con.execute("CREATE TABLE sessions (id TEXT, model TEXT, working_directory TEXT)")
+        con.execute("CREATE TABLE message_nodes (session_id TEXT, chat_message TEXT, created_at INTEGER)")
+        con.execute("INSERT INTO sessions VALUES (?,?,?)", ("d-s1", "dev-model", "/w"))
+        cm = {"metadata": {"metrics": {"input_tokens": 500, "output_tokens": 50,
+                                       "cache_read_tokens": 200,
+                                       "cache_creation_tokens": 0},
+                           "created_at": "2026-01-11T00:00:01.000000Z",
+                           "generation_model": "dev-model"}}
+        con.execute("INSERT INTO message_nodes VALUES (?,?,?)",
+                    ("d-s1", json.dumps(cm), 1767225601000))
+        con.commit()
+        con.close()
+
+        script = (
+            "import sys; sys.path.insert(0, %r)\n"
+            "from agent_token_radar.adapters.sqlite_family import DevinAdapter\n"
+            "from agent_token_radar.base import Source\n"
+            "a = DevinAdapter()\n"
+            "a.detect = lambda: [Source(path=__import__('pathlib').Path(%r),"
+            " kind='sqlite', agent='devin')]\n"
+            "print(a.scan(None).events[0].event_key)\n"
+        ) % (str(Path(__file__).resolve().parents[1]), str(p))
+
+        import os
+        import subprocess
+        keys = {}
+        for seed in ("1", "2"):
+            env = dict(os.environ, PYTHONHASHSEED=seed)
+            child = subprocess.run([sys.executable, "-c", script], capture_output=True,
+                                   text=True, env=env, timeout=60)
+            self.assertEqual(child.returncode, 0, child.stderr)
+            keys[seed] = child.stdout.strip()
+
+        self.assertEqual(keys["1"], keys["2"],
+                         "event_key changed across processes -> rescans duplicate rows")
+        # And it must agree with this process too, so a scan here and a scan
+        # from the CLI cannot disagree.
+        self.patch([Source(path=p, kind="sqlite", agent="devin")])
+        self.assertEqual(self.adapter.scan(None).events[0].event_key, keys["1"])
 
 
 class TestMiniMax(_Base):

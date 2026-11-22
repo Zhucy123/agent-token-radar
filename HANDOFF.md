@@ -22,7 +22,7 @@
 
 | 项 | 状态 |
 |---|---|
-| 单元测试 | 130 个全过（`python -m unittest discover -s tests -p 'test_*.py'`） |
+| 单元测试 | 149 个全过（`python -m unittest discover -s tests -p 'test_*.py'`） |
 | CLI | 可用（`scan` / `stats` / `serve` / `desktop`） |
 | Web 仪表盘 | 可用，中英双语，25 个 Agent 官方图标 |
 | 桌面版（源码运行） | 可用 |
@@ -39,7 +39,7 @@
 | 1 | `README.md` | 项目是什么、怎么装、怎么用 |
 | 2 | `DESIGN.md` | 完整技术文档：缓存命中率怎么算、各 Agent 的 input 语义差异、图标来源 |
 | 2b | `PRICING-NOTES.md` | 定价口径：官方价来源、为什么无价不算 0、覆盖率怎么读 |
-| 3 | `BUILD-NOTES.md` | **打包必读**。13 个坑的完整记录，含 4 个「本地正常、打包必炸」的陷阱 |
+| 3 | `BUILD-NOTES.md` | **打包必读**。14 个坑的完整记录，含 4 个「本地正常、打包必炸」的陷阱 |
 | 4 | `agent_token_radar/base.py` | 适配器基类，理解插件架构从这里开始 |
 | 5 | `agent_token_radar/store.py` | 数据库 schema 和所有聚合 SQL |
 | 6 | `agent_token_radar/web.py` | API 路由（只有 8 个，很短） |
@@ -131,7 +131,7 @@ C:\agent-token-radar\
 │   ├── provider_sources.py     Provider 判定（实测优先，推断次之并标注）
 │   ├── pricing.json            官方标价表（数据，不是代码）
 │   └── pricing.py              价格解析、峰谷判断（无汇率，全 USD）
-├── tests\                      130 个测试
+├── tests\                      149 个测试
 ├── build\                      app.ico / icon_512.png
 ├── dist\                       PyInstaller 产物（可重建，勿手改）
 ├── dist-installer\             AgentTokenRadar-Setup.exe（交付物）
@@ -140,7 +140,7 @@ C:\agent-token-radar\
 ├── agent-token-radar.iss       Inno Setup 安装脚本
 ├── ChineseSimplified.isl       Inno 简体中文语言文件
 ├── pyproject.toml              pip 安装配置
-├── BUILD-NOTES.md              打包过程与 13 个坑
+├── BUILD-NOTES.md              打包过程与 14 个坑
 ├── DESIGN.md                   完整技术文档（维护者向）
 ├── PRICING-NOTES.md            定价口径与维护方法
 ├── TOKEI-NOTES.md              tokei 调研与逐 Agent 解析规格

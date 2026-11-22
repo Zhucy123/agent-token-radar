@@ -110,12 +110,25 @@ class UncachedDerivationTests(unittest.TestCase):
         self.assertEqual(sum(r["total_tokens"] for r in by_agent),
                          t["total_tokens"])
 
-    def test_no_row_can_go_negative(self) -> None:
-        """A bad total must not produce a negative "input" in the UI."""
+    def test_bad_total_shows_negative_input_without_crashing(self) -> None:
+        """A corrupt row keeps its negative input visible, and must not blow up.
+
+        This asserts the DISPLAY side deliberately does NOT clamp: an uncached
+        value derived from a bad total (more cache reads than the row's own
+        total) is shown as the negative number it is, so whoever is diagnosing
+        the parser can see that the data is wrong. Clamping it to 0 here would
+        turn a visible defect into a plausible-looking zero.
+
+        Billing is the one place that DOES clamp -- see ``COST_ROW_SQL``'s
+        ``MAX(0, ...)``: a negative bucket would subtract from the bill and
+        could make a total negative, and no vendor refunds that. The split is
+        intentional: show the defect, never bill it.
+        """
         self.store.upsert_events([ev("x", total=10, output=100, cache_read=50)])
         t = self.store.totals()
-        self.assertLess(t["uncached_input_tokens"], 0)  # data is bad, and we
-        # ...still must not crash or produce NaN in the rate.
+        # Unclamped on purpose: the bad total surfaces as a negative input.
+        self.assertLess(t["uncached_input_tokens"], 0)
+        # ...and the derived rate must still be a sane number, not NaN.
         self.assertGreaterEqual(t["cache_hit"], 0.0)
 
 

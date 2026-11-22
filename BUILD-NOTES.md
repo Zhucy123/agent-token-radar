@@ -394,7 +394,7 @@ Unable to save shortcut "C:\ProgramData\Microsoft\Windows\Start Menu\Programs\..
 - [ ] 注册表卸载项存在（`DisplayName` / `DisplayVersion` / `InstallLocation`）
 - [ ] 静默卸载后目录、快捷方式、注册表全清
 - [ ] 卸载后数据库**保留**（重装不丢历史）
-- [ ] 单元测试全过（当前 130 个）
+- [ ] 单元测试全过（当前 149 个）
 
 实测结果：
 
@@ -403,7 +403,7 @@ adapters: 25
 窗口: 1280×860 逻辑像素（4K 150% 屏上物理 1920×1290）
 安装: exit 0 → 目录/快捷方式/注册表齐全
 卸载: exit 0 → 全清，数据库保留
-测试: 130 passed
+测试: 149 passed
 ```
 
 ---

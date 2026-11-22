@@ -153,7 +153,8 @@ Web 面板右上角点 `中文 / EN` 切换，或直接用 URL 参数：
 `Session` / `Cache` / `Input` / `Output` / `Reasoning` 等专有名词**两种语言下都保持英文**
 （中文界面写「按 Agent 分布」，不写「按智能体分布」）。
 
-**Agent 图标**：25 个 Agent 全部使用**官方标识**，内联在 `icons.py`（离线可用，无网络请求）。
+**Agent 图标**：25 个已启用适配器全部使用**官方标识**，内联在 `icons.py`（离线可用，无网络请求）。
+`icons.py` 的 `ICONS` 字典共有 37 条条目，因为同一厂商的别名、旧名和未启用变体也收在同一张表里（例如同一家的多个产品名共用一个官方 SVG）；「37 条条目」与「25 个适配器」不是矛盾，前者是资源表规模，后者是实际启用的 Agent 数。
 图标由 `_build_icons.py` 生成，脚本头部逐条记录了取证 URL，可用 `--offline` / `--refresh` / `--check` 重现与校验。
 
 - **simple-icons 官方 SVG**（CC0，厂商自提交）：Claude、CodeBuddy、Copilot、Gemini、OpenCode、
@@ -253,7 +254,7 @@ agent_token_radar/
 ├── cli.py         # scan / stats / serve（--lang zh|en）
 ├── web.py         # FastAPI + 后台定时增量扫描
 ├── i18n.py        # 中文 / 英文两套独立字符串表
-├── icons.py       # 36 个 Agent 图标（全部官方标识），由 _build_icons.py 生成
+├── icons.py       # 37 条图标条目（含别名/未启用变体），覆盖 25 个已启用适配器；由 _build_icons.py 生成
 ├── _build_icons.py # 图标构建脚本（源资产 → icons.py）
 ├── static/        # index.html / app.css / app.js
 └── adapters/      # 每个 Agent 一个文件，新增工具只需新增一个文件
@@ -475,7 +476,7 @@ JSONL 只在文件开头若干行里找 `cwd`（Codex 在第一条、Claude 很�
 
 ```bash
 # 在仓库根目录（agent_token_radar/ 的上一级）运行
-python -m unittest discover -s tests -p 'test_*.py'   # 130 个测试：桶映射 + 幂等性 + provider 来源 + 项目维度 + 切行 + 缓存命中率 + 端口顺延 + 费用估算
+python -m unittest discover -s tests -p 'test_*.py'   # 149 个测试：桶映射 + 幂等性 + provider 来源 + 项目维度 + 切行 + 缓存命中率 + 端口顺延 + 费用估算
 python -m agent_token_radar scan                       # 全量扫描冒烟
 python _build_icons.py --check                         # 确认 icons.py 与源规格一致（在 agent_token_radar/ 内）
 ```

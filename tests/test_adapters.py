@@ -247,6 +247,78 @@ class TestHermes(_AdapterTestCase):
         self.assertEqual(r.events[0].model, "mock-model-c")
         self.assertEqual(r.events[0].timestamp, 1767225660000)
 
+    def test_growing_aggregate_row_updates_in_place(self) -> None:
+        """A cumulative row that grows must overwrite, never add up.
+
+        ``session_model_usage`` is an aggregate: while the session is active,
+        ``last_seen`` and the token columns both move. The old event_key carried
+        ``last_seen_ms``, so every scan minted a new key, the UPSERT missed, and
+        the same lifetime totals were stored again on top of themselves --
+        the session counted twice, three times, once per scan.
+
+        Here one session is scanned at two points in its life: first with
+        1000/100, then with the totals risen to 1500/150. The stored figures
+        must be the LATEST totals, not 2500/250.
+        """
+        p = self.root / "state.db"
+        con = sqlite3.connect(p)
+        con.execute("""CREATE TABLE session_model_usage (
+            session_id TEXT, model TEXT, billing_provider TEXT, billing_base_url TEXT,
+            billing_mode TEXT, task TEXT, api_call_count INTEGER,
+            input_tokens INTEGER, output_tokens INTEGER, cache_read_tokens INTEGER,
+            cache_write_tokens INTEGER, reasoning_tokens INTEGER,
+            estimated_cost_usd REAL, actual_cost_usd REAL, cost_status TEXT,
+            cost_source TEXT, first_seen REAL, last_seen REAL)""")
+        con.execute("INSERT INTO session_model_usage VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    ("s1", "m1", "p", "u", "m", "chat", 1,
+                     1000, 100, 0, 0, 0, 0.0, 0.0, "ok", "x", 1767225600.0, 1767225660.0))
+        con.commit()
+        con.close()
+        self._patch_detect([Source(path=p, kind="sqlite", agent="hermes")])
+
+        r1 = self.adapter.scan(None)
+        c1 = self.store.upsert_events(r1.events)
+        self.assertEqual(c1["inserted"], 1)
+        self.assertEqual(self.store.totals()["input_tokens"], 1000)
+
+        # The session kept working: totals grew and last_seen moved forward.
+        con = sqlite3.connect(p)
+        con.execute("UPDATE session_model_usage SET input_tokens=1500, "
+                    "output_tokens=150, last_seen=1767225900.0")
+        con.commit()
+        con.close()
+
+        r2 = self.adapter.scan(None)
+        c2 = self.store.upsert_events(r2.events)
+        self.assertEqual(c2["inserted"], 0, "growth must update the row, not add one")
+        t = self.store.totals()
+        self.assertEqual(self.store.count(), 1)
+        self.assertEqual(t["input_tokens"], 1500)
+        self.assertEqual(t["output_tokens"], 150)
+
+    def test_event_key_is_stable_across_scans(self) -> None:
+        """The key must not carry a value that changes as the row grows."""
+        p = self.root / "state.db"
+        con = sqlite3.connect(p)
+        con.execute("""CREATE TABLE session_model_usage (
+            session_id TEXT, model TEXT, task TEXT, api_call_count INTEGER,
+            input_tokens INTEGER, output_tokens INTEGER, cache_read_tokens INTEGER,
+            cache_write_tokens INTEGER, reasoning_tokens INTEGER,
+            first_seen REAL, last_seen REAL)""")
+        con.execute("INSERT INTO session_model_usage VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                    ("s1", "m1", "chat", 1, 10, 1, 0, 0, 0, 100.0, 200.0))
+        con.commit()
+        con.close()
+        self._patch_detect([Source(path=p, kind="sqlite", agent="hermes")])
+
+        first = self.adapter.scan(None).events[0].event_key
+        con = sqlite3.connect(p)
+        con.execute("UPDATE session_model_usage SET last_seen=999.0, input_tokens=99")
+        con.commit()
+        con.close()
+        second = self.adapter.scan(None).events[0].event_key
+        self.assertEqual(first, second)
+
 
 class TestDsh(_AdapterTestCase):
     adapter_cls = DshAdapter

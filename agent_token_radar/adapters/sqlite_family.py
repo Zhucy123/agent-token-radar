@@ -8,6 +8,7 @@ original file is copied to a temp dir and opened with ``mode=ro`` +
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 from typing import Any
 
@@ -332,6 +333,14 @@ class DevinAdapter(BaseAdapter):
 
                     model = nested(cm, "metadata", "generation_model") or r["model"] or ""
                     # Devin writes each reply twice into sibling nodes.
+                    # ``sig`` elements MUST stay plain str/int: repr() of a
+                    # tuple of those is exact and identical in every process
+                    # (verified under PYTHONHASHSEED 0/1/12345/random), which
+                    # is what makes the digest below stable. Putting a dict,
+                    # set, float or arbitrary object in here would make repr()
+                    # order- or format-dependent and silently reintroduce the
+                    # unstable-key bug. Values are already str()/int()-coerced
+                    # by the query layer, so this holds today.
                     sig = (r["session_id"], ts, model, inp, out, cr, cw)
                     if sig in seen:
                         continue
@@ -339,7 +348,19 @@ class DevinAdapter(BaseAdapter):
 
                     result.events.append(make_event(
                         agent=self.name,
-                        event_key=f"{self.name}|h{abs(hash(sig)) & 0xFFFFFFFFFFFF:012x}",
+                        # Stable across processes: Python's hash() of a string
+                        # is randomised per interpreter (PYTHONHASHSEED), so the
+                        # old abs(hash(sig)) gave a DIFFERENT event_key on every
+                        # run. The UPSERT then never matched the row written by
+                        # the previous scan and re-inserted the whole file, so
+                        # repeated scans multiplied this agent's usage.
+                        # sha256 over the repr is stable and gives a fixed-width,
+                        # collision-safe key (no abs(), no truncation of a
+                        # negative number).
+                        event_key=(
+                            f"{self.name}|"
+                            f"{hashlib.sha256(repr(sig).encode()).hexdigest()[:20]}"
+                        ),
                         source_file=key,
                         model=str(model),
                         session_id=str(r["session_id"] or ""),

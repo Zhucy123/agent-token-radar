@@ -47,6 +47,42 @@ PRICING_PATH = Path(__file__).with_name("pricing.json")
 #: prices at most vendors, so they must not be folded into input.
 BUCKETS = ("input", "output", "cache_read", "cache_write")
 
+#: SQL for "how many tokens were actually sent uncached".
+#:
+#: Agents disagree about whether ``input_tokens`` already contains the cache
+#: buckets, and neither display nor billing may depend on which parser wrote
+#: the row:
+#:
+#: * **additive** (DSH, Claude, Gemini, Hermes): input EXCLUDES cache, and the
+#:   agent's own total is ``input + output + cache_read + cache_write``.
+#: * **inclusive** (Codex, WorkBuddy): input is the full prompt size INCLUDING
+#:   cache hits, and the agent's total is just ``input + output``. Codex stores
+#:   ``input_tokens=572,797,230`` against ``cached_input_tokens=558,823,552`` --
+#:   reading that input column as "uncached" overstates it 41x.
+#:
+#: Both conventions satisfy ``total = uncached + output + cache_read +
+#: cache_write``, so this one expression is exact for every agent (verified:
+#: no negative results across 73k rows) and no migration is needed.
+#:
+#: This lives here rather than in ``store.py`` because BOTH the display
+#: aggregates and :data:`COST_ROW_SQL` must use it: ``store.py`` imports this
+#: module, so the constant cannot be defined there without a cycle, and two
+#: copies of the expression would drift apart -- which is exactly how the
+#: inclusive-input double-billing bug got in (the dashboard showed uncached
+#: input while the cost SQL billed the full prompt AND the cache read again).
+#:
+#: The columns are QUALIFIED with the ``usage_events`` table name even though
+#: every current call site reads a single unaliased ``FROM usage_events``. That
+#: is not redundant: these queries LEFT JOIN ``model_prices``, and a bare
+#: ``output_tokens`` becomes ``ambiguous column name`` the moment that table
+#: grows a column of the same name. Verified by adding an ``output_tokens``
+#: column to ``model_prices`` on a database copy: the unqualified form errors
+#: immediately, the qualified form is unaffected.
+UNCACHED_INPUT_SQL = (
+    "(usage_events.total_tokens - usage_events.output_tokens "
+    "- usage_events.cache_read_tokens - usage_events.cache_write_tokens)"
+)
+
 
 def _dec(value: Any) -> Decimal | None:
     """Parse a price cell, tolerating the nulls a JSON table carries."""
@@ -324,6 +360,25 @@ def money(value: Any) -> Decimal:
 #: the usage queries. Returns NULL when the model has no price, so SUM() skips
 #: it instead of turning an unknown into a zero that looks like "free".
 #:
+#: The input bucket is :data:`UNCACHED_INPUT_SQL`, NOT ``input_tokens``.
+#: ``input_tokens`` means different things per agent (additive: excludes cache;
+#: inclusive: the full prompt already containing the cache hits), so billing it
+#: directly charged the inclusive agents (Codex, WorkBuddy) for their cached
+#: tokens twice -- once at the input rate and again at the cache-read rate. On
+#: this machine's real database that overstated total cost 5x
+#: ($1875.84 vs the correct $374.47, codex alone $1532.53 vs $120.38).
+#:
+#: That derived bucket is wrapped in ``MAX(0, ...)`` because it CAN go negative
+#: on corrupt input (a row claiming more cache reads than its own total). The
+#: old direct ``input_tokens`` could not: ``UsageEvent.normalized`` clamps it at
+#: >= 0. Without the clamp a corrupt row would subtract from the bill and a
+#: total could come out negative -- money the vendor never refunds. The display
+#: side deliberately does NOT clamp, so the bad data stays visible:
+#: ``test_bad_total_shows_negative_input_without_crashing`` asserts the negative
+#: uncached input is still reported. This clamp is billing-only: it stops the
+#: corruption at the money without hiding it from the person diagnosing the
+#: parser.
+#:
 #: Peak hours are resolved per row from ``usage_events.timestamp``, never from
 #: "now" and never as a daily average: a request logged at 02:00 UTC on a
 #: Tuesday is billed at the peak rate even if the report is generated at the
@@ -335,21 +390,27 @@ def money(value: Any) -> Decimal:
 #: SQLite evaluated the predicate four times per row and every aggregate cost
 #: ~730 ms over 76k rows. One evaluation with two full-rate branches is the same
 #: arithmetic and about four times cheaper.
-COST_ROW_SQL = """
+COST_ROW_SQL = (
+    """
     CASE
       WHEN mp.price_key IS NULL OR mp.price_key = '' THEN NULL
       WHEN {peak} THEN
-          (COALESCE(usage_events.input_tokens, 0)       / 1000000.0) * mp.input_usd
+          (COALESCE(MAX(0, """
+    + UNCACHED_INPUT_SQL
+    + """), 0) / 1000000.0) * mp.input_usd
         + (COALESCE(usage_events.output_tokens, 0)      / 1000000.0) * mp.output_usd
         + (COALESCE(usage_events.cache_read_tokens, 0)  / 1000000.0) * mp.cache_read_usd
         + (COALESCE(usage_events.cache_write_tokens, 0) / 1000000.0) * mp.cache_write_usd
       ELSE
-          (COALESCE(usage_events.input_tokens, 0)       / 1000000.0) * mp.input_offpeak_usd
+          (COALESCE(MAX(0, """
+    + UNCACHED_INPUT_SQL
+    + """), 0) / 1000000.0) * mp.input_offpeak_usd
         + (COALESCE(usage_events.output_tokens, 0)      / 1000000.0) * mp.output_offpeak_usd
         + (COALESCE(usage_events.cache_read_tokens, 0)  / 1000000.0) * mp.cache_read_offpeak_usd
         + (COALESCE(usage_events.cache_write_tokens, 0) / 1000000.0) * mp.cache_write_offpeak_usd
     END
 """
+)
 
 #: Whether the row's own timestamp is inside a peak window.
 #:

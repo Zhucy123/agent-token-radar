@@ -25,8 +25,8 @@ from datetime import datetime, timedelta, timezone
 from _tmp import make_temp_dir
 
 from agent_token_radar.base import UsageEvent
-from agent_token_radar.pricing import PriceTable
-from agent_token_radar.store import Store
+from agent_token_radar.pricing import PriceTable, cost_sql
+from agent_token_radar.store import UNCACHED_INPUT_SQL, Store
 
 #: A Tuesday at 02:00 UTC: inside DeepSeek's peak window (01:00-04:00 UTC).
 PEAK_TUE = datetime(2026, 11, 24, 2, 0, tzinfo=timezone.utc)
@@ -41,8 +41,19 @@ OFF_HOLIDAY = datetime(2026, 10, 1, 2, 0, tzinfo=timezone.utc)
 def ev(agent: str, model: str, *, inp: int, out: int, cr: int = 0, cw: int = 0,
        project: str = "", key: str = "",
        when: datetime | None = None,
-       provider_source: str = "measured") -> UsageEvent:
-    total = inp + out + cr + cw
+       provider_source: str = "measured",
+       total: int | None = None) -> UsageEvent:
+    """Build an event. ``total`` defaults to the additive sum of the buckets.
+
+    Additive parsers (DSH, Claude) store input EXCLUDING cache, so their total
+    is ``inp + out + cr + cw``. Inclusive parsers (Codex, WorkBuddy) put the
+    cache hits INSIDE ``inp``, so their total is just ``inp + out`` -- pass
+    ``total=inp + out`` to model one of those faithfully. Leaving the default
+    for an inclusive-shaped row would describe a row no parser can emit, and
+    the two conventions would stop agreeing on ``total``.
+    """
+    if total is None:
+        total = inp + out + cr + cw
     return UsageEvent(
         event_key=key or f"{agent}-{model}-{inp}-{out}-{cr}-{cw}-{project}",
         agent=agent,
@@ -213,6 +224,91 @@ class StoreCostTests(unittest.TestCase):
                when=OFF_HOLIDAY),
         ])
         self.assertAlmostEqual(self.store.totals()["cost_usd"], 0.15, places=4)
+
+    def test_inclusive_input_does_not_double_bill_cache_reads(self) -> None:
+        """Codex-style rows bill cache hits once, at the cache rate.
+
+        ``input_tokens`` means different things per agent. Additive parsers
+        (DSH, Claude) store input EXCLUDING cache, so ``input + output +
+        cache_read + cache_write`` is the total. Inclusive parsers (Codex,
+        WorkBuddy) store the FULL prompt already containing the cache hits, and
+        ``input + output`` is the total.
+
+        Billing ``input_tokens`` as the uncached bucket charges an inclusive
+        row's cached tokens twice: once at the input rate and again at the
+        cache-read rate. On this machine's real database that overstated total
+        cost 5x ($1875.84 vs $374.47) and codex alone 12x ($1532.53 vs
+        $120.38). ``test_cost.py`` only used additive rows, so nothing caught it.
+
+        1M prompt, 800K of it cache read, on Terra (flat $1 in / $0.05 cache
+        read): the 200K uncached costs 0.20 and the 800K reads cost 0.04, so
+        the row must be 0.24 -- not 1.00 + 0.04 = 1.04.
+        """
+        self.store.upsert_events([
+            ev("codex", "gpt-6.1-terra", inp=1_000_000, out=0, cr=800_000,
+               when=PEAK_TUE, total=1_000_000),
+        ])
+        t = self.store.totals()
+        self.assertAlmostEqual(t["cost_usd"], 0.24, places=4)
+        # The display already reported 200K uncached; cost must agree with it.
+        self.assertEqual(t["uncached_input_tokens"], 200_000)
+
+    def test_additive_rows_are_unchanged_by_the_uncached_bucket(self) -> None:
+        """The fix must not move the agents it was never about.
+
+        Additive parsers exclude cache from ``input_tokens``, so the uncached
+        bucket equals that column and their cost is bit-for-bit what it was.
+        """
+        self.store.upsert_events([
+            ev("dsh", "deepseek-v4.1-flash", inp=1_000_000, out=0, cr=2_000_000,
+               when=PEAK_TUE),
+        ])
+        t = self.store.totals()
+        # 1M input at 0.30 + 2M cache reads at 0.006.
+        self.assertAlmostEqual(t["cost_usd"], 0.312, places=4)
+        self.assertEqual(t["uncached_input_tokens"], 1_000_000)
+
+    def test_inclusive_and_additive_rows_agree_in_one_total(self) -> None:
+        """Two agents describing the SAME traffic must cost the same.
+
+        This is the invariant the bug broke: it was invisible per agent but
+        obvious across them -- the inclusive agent looked 12x more expensive
+        for identical token counts.
+        """
+        self.store.upsert_events([
+            # Additive: 1M uncached + 2M cache reads (total = 3M).
+            ev("dsh", "deepseek-v4.1-flash", inp=1_000_000, out=0, cr=2_000_000,
+               when=PEAK_TUE, key="additive"),
+            # Inclusive: the same traffic, input stated as the full 3M prompt,
+            # so total is input + output = 3M, same as the additive row.
+            ev("codex", "deepseek-v4.1-flash", inp=3_000_000, out=0, cr=2_000_000,
+               when=PEAK_TUE, key="inclusive", total=3_000_000),
+        ])
+        rows = {r["agent"]: r for r in self.store.by_agent()}
+        self.assertAlmostEqual(rows["dsh"]["cost_usd"], 0.312, places=4)
+        self.assertAlmostEqual(rows["codex"]["cost_usd"], 0.312, places=4)
+        self.assertAlmostEqual(self.store.totals()["cost_usd"], 0.624, places=4)
+
+    def test_corrupt_row_cannot_produce_a_negative_cost(self) -> None:
+        """A row claiming more cache than its total must not refund money.
+
+        The billing input bucket is derived (``total - output - cache - cache
+        write``), so unlike the old ``input_tokens`` column it can go negative
+        on a corrupt row. A negative input bucket would SUBTRACT from the bill
+        and a total could come out negative -- money no vendor refunds. The
+        display keeps the raw negative so the bad row stays visible; only the
+        billing side clamps.
+        """
+        self.store.upsert_events([
+            # More cache reads than the row's own total: nonsense data.
+            ev("dsh", "deepseek-v4.1-flash", inp=0, out=0, cr=50, cw=0,
+               total=10, when=PEAK_TUE),
+        ])
+        t = self.store.totals()
+        self.assertGreaterEqual(t["cost_usd"], 0.0,
+                                "a corrupt row must never make the bill negative")
+        # The display still reports the bad input so the parser can be fixed.
+        self.assertLess(t["uncached_input_tokens"], 0)
 
     def test_peak_and_offpeak_rows_coexist_in_one_total(self) -> None:
         """One total must mix rates per row, not pick one rate for the group.
@@ -487,6 +583,50 @@ class SnapshotTests(unittest.TestCase):
         self.assertEqual(priced, snap["totals"]["priced_tokens"])
         # hy4std is 300k of the tokens and has no price.
         self.assertLess(snap["totals"]["priced_ratio"], 1.0)
+
+
+class SqlShapeTests(unittest.TestCase):
+    """Guards on the generated SQL itself, not on a query result.
+
+    A behavioural test cannot see a latent ambiguity: unqualified columns join
+    fine until some future column collides. These assert the shape that keeps
+    the query safe and the billing honest.
+    """
+
+    def test_uncached_input_columns_are_table_qualified(self) -> None:
+        """Every column must survive the LEFT JOIN onto ``model_prices``.
+
+        An unqualified ``output_tokens`` resolves today only because
+        ``model_prices`` happens to have no column of that name. Add one and
+        the query dies with "ambiguous column name". Qualifying makes that
+        impossible.
+        """
+        cols = ("total_tokens", "output_tokens", "cache_read_tokens",
+                "cache_write_tokens")
+        for col in cols:
+            self.assertIn(f"usage_events.{col}", UNCACHED_INPUT_SQL,
+                          f"{col} must be qualified to survive the price join")
+        stripped = UNCACHED_INPUT_SQL
+        for col in cols:
+            stripped = stripped.replace(f"usage_events.{col}", "")
+        for col in cols:
+            self.assertNotIn(col, stripped,
+                             f"{col} appears unqualified in the expression")
+
+    def test_cost_sql_clamps_the_derived_input_bucket(self) -> None:
+        """Billing clamps a negative input bucket; the old raw column could not
+        go negative, so this hazard arrived with the derived expression."""
+        sql = cost_sql()
+        self.assertEqual(sql.count("MAX(0,"), 2,
+                         "both the peak and the off-peak branch must clamp")
+
+    def test_cost_sql_no_longer_bills_raw_input_tokens(self) -> None:
+        """The regression guard: this is THE bug that overstated cost 5x."""
+        self.assertNotIn(
+            "usage_events.input_tokens", cost_sql(),
+            "cost must not bill input_tokens: for inclusive agents that column "
+            "already contains the cache hits, so billing it charges the cached "
+            "tokens twice")
 
 
 if __name__ == "__main__":

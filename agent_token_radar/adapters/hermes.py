@@ -13,7 +13,16 @@ price table, and this tool bills every agent from one shared pricing.json so the
 figures stay comparable across agents. Mixing the two would make Hermes look
 like it was priced differently from everyone else for no stated reason.
 
-event_key = ``hermes|{session_id}|{model}|{task}|{last_seen_ms}``
+event_key = ``hermes|{session_id}|{model}|{task}``
+
+The key deliberately carries NO timestamp. ``session_model_usage`` is an
+AGGREGATE table: its row for one (session, model, task) keeps growing while the
+session is active, and ``last_seen`` changes with it. Including ``last_seen``
+(as an earlier version did) minted a NEW key on every scan of an active
+session, so the UPSERT never matched, the older rows were never replaced, and
+the cumulative counters were added again on top of themselves -- the same
+session counted twice, three times, once per scan. A business-identity key lets
+the UPSERT overwrite the row with the current cumulative totals instead.
 """
 
 from __future__ import annotations
@@ -73,7 +82,10 @@ class HermesAdapter(BaseAdapter):
                     task = str(r["task"] or "")
                     last_ms = seconds_to_ms(r["last_seen"])
                     ts = last_ms or seconds_to_ms(r["first_seen"])
-                    ekey = f"hermes|{sid}|{model}|{task}|{last_ms}"
+                    # No timestamp in the key: this table is cumulative, so a
+                    # changing last_seen must update the SAME row rather than
+                    # insert a new one on every scan. See the module docstring.
+                    ekey = f"hermes|{sid}|{model}|{task}"
 
                     # Hermes logs no provider; its model strings carry a
                     # ``provider/model`` prefix when it proxies one.
