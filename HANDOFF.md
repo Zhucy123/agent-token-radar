@@ -22,7 +22,7 @@
 
 | 项 | 状态 |
 |---|---|
-| 单元测试 | 186 个全过（`python -m unittest discover -s tests -p 'test_*.py'`） |
+| 单元测试 | 223 个全过（`python -m unittest discover -s tests -p 'test_*.py'`） |
 | CLI | 可用（`scan` / `stats` / `serve` / `desktop`） |
 | Web 仪表盘 | 可用，中英双语，25 个 Agent 官方图标 |
 | 桌面版（源码运行） | 可用 |
@@ -131,7 +131,7 @@ C:\agent-token-radar\
 │   ├── provider_sources.py     Provider 判定（实测优先，推断次之并标注）
 │   ├── pricing.json            官方标价表（数据，不是代码）
 │   └── pricing.py              价格解析、峰谷判断（无汇率，全 USD）
-├── tests\                      186 个测试
+├── tests\                      223 个测试
 ├── build\                      app.ico / icon_512.png
 ├── dist\                       PyInstaller 产物（可重建，勿手改）
 ├── dist-installer\             AgentTokenRadar-Setup.exe（交付物）

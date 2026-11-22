@@ -596,5 +596,98 @@ class SettingsTranslationTests(unittest.TestCase):
                              f"{key} leaks English into Chinese mode: {leaked}")
 
 
+class EveryFontStackTests(unittest.TestCase):
+    """No font stack anywhere may let Chinese fall through to an arbitrary face.
+
+    ``test_typefaces_are_installed_only_and_end_in_a_generic`` guards the 22
+    options in the Settings dropdown, but the stylesheet has its own stacks that
+    the dropdown never touches -- the ``.mono``/``.project-name``/
+    ``.model-provider``/``.session-id`` rules all rendered Chinese project and
+    session names through ``ui-monospace, ... , monospace`` with no CJK face,
+    so Chinese there fell back to whatever the browser picked and looked
+    different from the rest of the page. A latent bug: silent, and invisible
+    unless you read those exact cells in Chinese.
+
+    These tests sweep the stylesheet and the canvas fallback instead of naming
+    individual selectors, so a new stack added later is covered automatically.
+    """
+
+    #: Faces that actually contain Han glyphs on Windows. The stack only has to
+    #: name one; whichever is installed wins and the rest are ignored.
+    CJK = ("YaHei", "SimSun", "SimHei", "KaiTi", "FangSong", "DengXian",
+           "Noto Sans SC", "Noto Sans CJK", "Source Han", "PingFang",
+           "Hiragino", "Microsoft JhengHei")
+
+    def _css(self) -> str:
+        return (ROOT / "agent_token_radar" / "static" / "app.css").read_text(
+            encoding="utf-8")
+
+    def test_every_literal_font_stack_has_a_cjk_fallback(self) -> None:
+        css = self._css()
+        # Strip comments first: the prose around these rules mentions family
+        # names and would otherwise be matched as if it were a declaration.
+        css = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+        stacks = re.findall(r"font-family:\s*([^;}]+)", css)
+        self.assertTrue(stacks, "no font-family declarations found")
+        for stack in stacks:
+            stack = stack.strip()
+            # A token reference is fine: --font-ui itself is checked below.
+            if stack.startswith("var("):
+                continue
+            self.assertTrue(
+                any(cjk in stack for cjk in self.CJK),
+                f"font stack has no CJK fallback: {stack}")
+
+    def test_the_font_token_has_a_cjk_fallback(self) -> None:
+        css = self._css()
+        m = re.search(r"--font-ui:\s*([^;]+);", css)
+        self.assertIsNotNone(m, "--font-ui token is missing")
+        stack = m.group(1)
+        self.assertTrue(
+            any(cjk in stack for cjk in self.CJK),
+            f"--font-ui has no CJK fallback: {stack}")
+
+    def test_monospace_labels_keep_tabular_alignment(self) -> None:
+        """A CJK face appended to a mono stack must not break digit alignment.
+
+        The cells that use these stacks hold token counts; the numbers stay on
+        the Latin monospace face, so tabular alignment must still be declared
+        where the column needs it rather than assumed from the family.
+        """
+        css = self._css()
+        # Every mono stack must still lead with a Latin monospace family, so
+        # digits render monospaced and only Han characters reach the CJK face.
+        mono_stacks = re.findall(
+            r"font-family:\s*([^;}]*monospace[^;}]*)", css)
+        self.assertTrue(mono_stacks, "no monospace stacks found")
+        for stack in mono_stacks:
+            first = stack.split(",")[0].strip().strip('"\'')
+            self.assertNotIn(
+                first, self.CJK,
+                f"mono stack leads with a CJK face, digits lose alignment: {stack}")
+            self.assertTrue(
+                any(m in stack for m in ("ui-monospace", "SFMono", "Menlo",
+                                         "Consolas", "Cascadia", "Lucida",
+                                         "monospace")),
+                f"mono stack lost its Latin monospace face: {stack}")
+
+    def test_canvas_fallback_has_a_cjk_fallback(self) -> None:
+        """The chart's || fallback is a real code path, not decoration.
+
+        ``--font-ui`` is always set today, but if the token is missing or a
+        browser returns an empty computed value the chart would silently draw
+        its axis labels with a stack that has no Han coverage.
+        """
+        js = _js()
+        m = re.search(
+            r'getPropertyValue\("--font-ui"\)\.trim\(\)\s*\n?\s*\|\|\s*([^;]+);',
+            js)
+        self.assertIsNotNone(m, "canvas font fallback not found")
+        fallback = m.group(1)
+        self.assertTrue(
+            any(cjk in fallback for cjk in self.CJK),
+            f"canvas fallback has no CJK face: {fallback}")
+
+
 if __name__ == "__main__":
     unittest.main()

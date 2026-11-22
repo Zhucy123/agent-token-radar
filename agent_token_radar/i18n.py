@@ -30,6 +30,7 @@ _ZH: dict[str, str] = {
     # shell
     "app.title": "Agent Token Radar",
     "app.tagline": "本地 · 只读 · Token 统计与参考费用",
+    "app.live": "实时更新",
     "skip": "跳到主内容",
     # toolbar
     "toolbar.range": "时间范围",
@@ -41,6 +42,20 @@ _ZH: dict[str, str] = {
     "toolbar.autoscan": "自动刷新",
     "toolbar.lang": "语言",
     "toolbar.theme": "主题",
+    # Section jump bar. Short labels for the six sections. Domain nouns
+    # (Agent / Model / Session / Token) stay in English in both languages;
+    # every label still carries Chinese of its own -- "Top Session" was
+    # replaced by "Session 排行" because "Top" is an ordinary English word
+    # with a Chinese equivalent, not one of the preserved domain nouns.
+    "nav.sections": "页面导航",
+    "nav.summary": "汇总",
+    "nav.trend": "消耗趋势",
+    "nav.byAgent": "按 Agent 分布",
+    "nav.byModel": "按 Agent / Model",
+    "nav.byProject": "按项目分布",
+    "nav.topSessions": "Session 排行",
+    # Hover text on the status dot next to the app title.
+    "app.live": "实时更新",
     # Settings dialog. One set of keys per setting type, plus the generic
     # dialog chrome, so adding a setting is a config entry + its labels here.
     "settings.open": "设置",
@@ -219,6 +234,7 @@ _ZH: dict[str, str] = {
 _EN: dict[str, str] = {
     "app.title": "Agent Token Radar",
     "app.tagline": "Local · read-only · Token usage & cost estimates",
+    "app.live": "Live updates",
     "skip": "Skip to main content",
     "toolbar.range": "Time range",
     "range.today": "Today",
@@ -229,6 +245,13 @@ _EN: dict[str, str] = {
     "toolbar.autoscan": "Auto refresh",
     "toolbar.lang": "Language",
     "toolbar.theme": "Theme",
+    "nav.sections": "Sections",
+    "nav.summary": "Summary",
+    "nav.trend": "Trend",
+    "nav.byAgent": "By Agent",
+    "nav.byModel": "Agent / Model",
+    "nav.byProject": "By project",
+    "nav.topSessions": "Top Sessions",
     "settings.open": "Settings",
     "settings.title": "Settings",
     "settings.close": "Close",

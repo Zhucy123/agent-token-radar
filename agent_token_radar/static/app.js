@@ -29,6 +29,18 @@
     trend: null,
   };
 
+  /* The section jump bar is data-driven, like SETTINGS below: one entry per
+     section, no six copies of markup. Each id is one of the section headings'
+     id in index.html, so href="#id" is a genuine native anchor jump. */
+  const NAV_SECTIONS = [
+    { id: "cards-title", key: "nav.summary" },
+    { id: "trend-title", key: "nav.trend" },
+    { id: "agent-title", key: "nav.byAgent" },
+    { id: "model-title", key: "nav.byModel" },
+    { id: "project-title", key: "nav.byProject" },
+    { id: "sessions-title", key: "nav.topSessions" },
+  ];
+
   // Chart colours. The brand colour of an icon is a poor choice here: several
   // official marks are near-black (Codex, Hermes), which disappears on the dark
   // theme and reads as "no data". This is a fixed categorical ramp in rank
@@ -464,7 +476,8 @@
     return out;
   }
 
-  const fmt = (n) => new Intl.NumberFormat(state.lang === "zh" ? "zh-CN" : "en-US").format(Math.trunc(Number(n) || 0));  const short = (s, n = 34) => (s && s.length > n ? s.slice(0, n - 1) + "…" : (s || "—"));
+  const fmt = (n) => new Intl.NumberFormat(state.lang === "zh" ? "zh-CN" : "en-US").format(Math.trunc(Number(n) || 0));
+  const short = (s, n = 34) => (s && s.length > n ? s.slice(0, n - 1) + "…" : (s || "—"));
   const time = (ms) => (ms
     ? new Date(Number(ms)).toLocaleString(state.lang === "zh" ? "zh-CN" : "en-US", { hour12: false })
     : "—");
@@ -1344,7 +1357,7 @@
     // system stack while the rest of the page changes.
     const fontFamily = getComputedStyle(document.documentElement)
       .getPropertyValue("--font-ui").trim()
-      || "system-ui, sans-serif";
+      || 'system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif';
     ctx.font = `0.6875rem ${fontFamily}`;
     ctx.textBaseline = "middle";
 
@@ -1853,6 +1866,198 @@
     }
   }
 
+  /* ------------------------------------------------------- section jump bar */
+
+  /** Build the jump links once from NAV_SECTIONS; labels come from i18n. */
+  function renderSectionNav() {
+    const nav = $("sectionNav");
+    if (!nav) return;
+    nav.replaceChildren();
+    for (const section of NAV_SECTIONS) {
+      const a = document.createElement("a");
+      a.href = `#${section.id}`;
+      a.dataset.navKey = section.key;
+      a.textContent = t(section.key);
+      nav.appendChild(a);
+    }
+  }
+
+  /** Refresh the link labels after a language switch (no rebuild needed). */
+  function refreshSectionNavLabels() {
+    const nav = $("sectionNav");
+    if (!nav) return;
+    for (const a of nav.querySelectorAll("a[data-nav-key]")) {
+      a.textContent = t(a.dataset.navKey);
+    }
+  }
+
+  /**
+   * Highlight the section currently in view (scroll-spy).
+   *
+   * IntersectionObserver only -- no scroll listener computing offsets. A thin
+   * band just under the sticky topbar is the "active" line: a section is current
+   * once its heading crosses into that band. Because a short final section may
+   * never reach the top of a long page, a separate bottom sentinel highlights the
+   * last entry when the page is scrolled to the bottom.
+   */
+  function initSectionSpy() {
+    const nav = $("sectionNav");
+    if (!nav || !("IntersectionObserver" in window)) return;
+    const links = [...nav.querySelectorAll("a[data-nav-key]")];
+    const targets = NAV_SECTIONS
+      .map((s) => document.getElementById(s.id))
+      .filter(Boolean);
+    const footer = document.querySelector("main > footer");
+
+    const setCurrent = (id) => {
+      for (const a of links) {
+        const active = a.hash === `#${id}`;
+        a.classList.toggle("is-current", active);
+        // The visual state must be mirrored for assistive tech (scrollspy guide).
+        if (active) a.setAttribute("aria-current", "true");
+        else a.removeAttribute("aria-current");
+      }
+    };
+
+    // The topbar wraps to two lines on narrow windows (the status line is on its
+    // own row), so its real height is taller than the CSS constant --topbar-h.
+    // Measure it and feed the value back to scroll-padding-block-start, otherwise
+    // a jumped-to heading lands under the sticky bar. The same measurement drives
+    // the observer's top band, so "current" and "landing position" agree.
+    // Resolve a rem-based custom property to PIXELS. getPropertyValue() on an
+    // *unregistered* custom property returns the raw token stream ("1rem"),
+    // not a resolved length -- parseFloat("1rem") is 1, which silently made the
+    // gap 1px instead of 16px. A throwaway probe element forces the browser to
+    // do the unit conversion, which is the only reliable way short of
+    // registering each token with @property.
+    const readTokenPx = (name, fallback) => {
+      const raw = getComputedStyle(document.documentElement)
+        .getPropertyValue(name).trim();
+      if (!raw) return fallback;
+      // Already a length the browser has resolved (e.g. "16px"): use it.
+      const direct = /^-?\d*\.?\d+px$/i.test(raw) ? parseFloat(raw) : NaN;
+      if (Number.isFinite(direct)) return direct;
+      // Otherwise let the browser convert the token for us.
+      const probe = document.createElement("div");
+      probe.setAttribute("aria-hidden", "true");
+      probe.style.cssText =
+        "position:absolute;visibility:hidden;pointer-events:none;padding:0;border:0";
+      probe.style.paddingTop = raw;
+      document.body.appendChild(probe);
+      const resolved = parseFloat(getComputedStyle(probe).paddingTop);
+      probe.remove();
+      return Number.isFinite(resolved) ? resolved : fallback;
+    };
+
+    let lastTopbarH = 0;
+    let lastNavH = 0;
+    const measureBars = () => {
+      const bar = document.querySelector(".topbar");
+      const barH = bar ? Math.round(bar.getBoundingClientRect().height) : 60;
+      if (barH !== lastTopbarH) {
+        lastTopbarH = barH;
+        document.documentElement.style.setProperty("--topbar-h", `${barH}px`);
+      }
+      // The nav is sticky under the topbar; its height also feeds scroll-padding
+      // and the spy band, so a jumped-to heading clears both bars.
+      const navH = nav ? Math.round(nav.getBoundingClientRect().height) : 0;
+      if (navH !== lastNavH) {
+        lastNavH = navH;
+        document.documentElement.style.setProperty("--nav-h", `${navH}px`);
+      }
+      return barH + navH;
+    };
+
+    let spyObserver = null;
+    let bottomObserver = null;
+    const buildObservers = () => {
+      if (spyObserver) spyObserver.disconnect();
+      if (bottomObserver) bottomObserver.disconnect();
+      // Same gap the stylesheet puts between the bars and the heading.
+      const gap = readTokenPx("--space-4", 16);
+      const topInset = measureBars() + gap;
+
+      // Which headings are inside the band right now. IntersectionObserver
+      // delivers only the entries whose state CHANGED, so the callback's array
+      // is a delta, not the current set. Treating it as the set is a real bug:
+      // after jumping to a heading, the next one down enters the band and the
+      // callback sees only that new entry, so the highlight jumps ahead to a
+      // section the reader is not looking at. Keep the whole set instead.
+      const inBand = new Set();
+      const pickTopmost = () => {
+        let best = null;
+        let bestTop = Infinity;
+        for (const el of inBand) {
+          const top = el.getBoundingClientRect().top;
+          if (top < bestTop) {
+            bestTop = top;
+            best = el;
+          }
+        }
+        if (best) setCurrent(best.id);
+      };
+
+      spyObserver = new IntersectionObserver((entries) => {
+        let changed = false;
+        for (const e of entries) {
+          if (e.isIntersecting) {
+            if (!inBand.has(e.target)) {
+              inBand.add(e.target);
+              changed = true;
+            }
+          } else if (inBand.delete(e.target)) {
+            changed = true;
+          }
+        }
+        if (changed) pickTopmost();
+      }, {
+        // Band from just under the sticky bar to ~45% down the viewport. The
+        // jumped-to heading sits at topbar+16px, comfortably inside it.
+        rootMargin: `-${topInset}px 0px -55% 0px`,
+        threshold: 0,
+      });
+      targets.forEach((el) => spyObserver.observe(el));
+
+      // Bottom-of-page fallback: the last section may be too short to ever reach
+      // the band, so highlight it once the footer comes into view.
+      if (footer && NAV_SECTIONS.length) {
+        bottomObserver = new IntersectionObserver((entries) => {
+          if (entries.some((e) => e.isIntersecting)) {
+            setCurrent(NAV_SECTIONS[NAV_SECTIONS.length - 1].id);
+          }
+        }, { rootMargin: "0px 0px -15% 0px", threshold: 0 });
+        bottomObserver.observe(footer);
+      }
+    };
+
+    measureBars();
+    buildObservers();
+
+    // Reflect a click immediately (the observer catches up during the scroll),
+    // so the highlight follows the finger even before scrolling settles.
+    nav.addEventListener("click", (ev) => {
+      const a = ev.target.closest("a[data-nav-key]");
+      if (a && a.hash) setCurrent(a.hash.slice(1));
+    });
+
+    // The bar's height changes when the status line wraps/unwraps or the font
+    // size setting changes. Keep scroll-padding and the spy band in sync.
+    if ("ResizeObserver" in window) {
+      const ro = new ResizeObserver(() => {
+        const bar2 = document.querySelector(".topbar");
+        const barH = bar2 ? Math.round(bar2.getBoundingClientRect().height) : 60;
+        const navH = nav ? Math.round(nav.getBoundingClientRect().height) : 0;
+        if (barH !== lastTopbarH || navH !== lastNavH) buildObservers();
+      });
+      const bar = document.querySelector(".topbar");
+      if (bar) ro.observe(bar);
+      ro.observe(nav);
+    }
+
+    // Initial state: highlight the first entry until the observer reports.
+    if (NAV_SECTIONS.length) setCurrent(NAV_SECTIONS[0].id);
+  }
+
   /* ------------------------------------------------------------- i18n pass */
 
   function applyI18n() {
@@ -1872,6 +2077,16 @@
     for (const el of document.querySelectorAll("[data-i18n-aria]")) {
       el.setAttribute("aria-label", t(el.dataset.i18nAria));
     }
+    // title/alt are user-visible too: a hard-coded tooltip stays English in
+    // Chinese mode. aria-hidden does not hide a native tooltip.
+    for (const el of document.querySelectorAll("[data-i18n-title]")) {
+      el.setAttribute("title", t(el.dataset.i18nTitle));
+    }
+    for (const el of document.querySelectorAll("[data-i18n-alt]")) {
+      el.setAttribute("alt", t(el.dataset.i18nAlt));
+    }
+    // Jump-bar labels are generated from NAV_SECTIONS, not data-i18n markup.
+    refreshSectionNavLabels();
     // Range buttons / lang buttons keep their own pressed state.
     for (const b of $("langSwitch").querySelectorAll("button")) {
       b.setAttribute("aria-pressed", String(b.dataset.lang === state.lang));
@@ -2125,6 +2340,11 @@
     ]);
     state.icons = icons || {};
     state.agents = agents || [];
+
+    // Build the jump bar before setLang(): applyI18n() refreshes its labels, so
+    // the links must exist by then. Wire the observer after the DOM is stable.
+    renderSectionNav();
+    initSectionSpy();
 
     // The canvas is painted once per render, so a light/dark flip has to
     // trigger a repaint: the palette and the icon variants both depend on it.
