@@ -2322,12 +2322,100 @@
     opener.addEventListener("click", () => renderSettings());
 
     $("settingsReset").addEventListener("click", resetSettings);
+    initUpdateBox();
 
     dlg.addEventListener("close", () => {
       // Focus return is the browser's job; this only covers the case where the
       // dialog was closed by clicking the backdrop while focus sat inside.
       if (!dlg.open && document.activeElement === document.body) opener.focus();
     });
+  }
+
+  /* ----------------------------------------------------------------- update
+
+     The desktop build and the web build share one rule: ask the server, never
+     call GitHub from the page. The server owns the daily cache and the request
+     itself (updates.py), so the browser stays same-origin and this module needs
+     no CORS handling, no token and no fetch of a third-party host.
+
+     The server also checks once at startup, so opening Settings usually shows a
+     result immediately; the button is for "I want to know RIGHT now", which
+     forces past the cache. */
+
+  function renderUpdate(status) {
+    const line = $("updateStatus");
+    const dl = $("updateDownload");
+    const meta = $("updateMeta");
+    if (!line) return;
+    const v = status.current_version || "";
+
+    line.dataset.state = status.state || "unknown";
+    switch (status.state) {
+      case "checking":
+        line.textContent = t("update.checking");
+        dl.hidden = true;
+        meta.textContent = t("update.current", { version: v });
+        break;
+      case "update_available":
+        line.textContent = t("update.available", {
+          latest: status.latest_version, current: v,
+        });
+        dl.href = status.latest_url || "#";
+        dl.hidden = false;
+        meta.textContent = status.stale
+          ? t("update.unavailableHint")
+          : t("update.checkedAt", { time: time(Number(status.checked_at) * 1000) });
+        break;
+      case "up_to_date":
+        line.textContent = t("update.upToDate", { version: v });
+        dl.hidden = true;
+        meta.textContent = status.stale
+          ? t("update.unavailableHint")
+          : t("update.checkedAt", { time: time(Number(status.checked_at) * 1000) });
+        break;
+      case "unavailable":
+        // Never an error dialog: an offline machine is a normal machine.
+        line.textContent = t("update.unavailable");
+        dl.hidden = true;
+        meta.textContent = `${t("update.current", { version: v })} · ${t("update.unavailableHint")}`;
+        break;
+      default:
+        line.textContent = t("update.never");
+        dl.hidden = true;
+        meta.textContent = t("update.current", { version: v });
+    }
+    $("updateCheck").textContent =
+      status.state === "unknown" ? t("update.check") : t("update.recheck");
+  }
+
+  function initUpdateBox() {
+    const btn = $("updateCheck");
+    if (!btn) return;
+
+    // The server is the authority on the running version (it reports it in
+    // every /api/update response), so this module never hard-codes one.
+    let current = "";
+
+    const ask = async (force) => {
+      renderUpdate({ state: "checking", current_version: current });
+      btn.disabled = true;
+      try {
+        const r = await api(`/api/update${force ? "?force=true" : ""}`);
+        if (r && r.current_version) current = r.current_version;
+        renderUpdate(r || { state: "unavailable", current_version: current });
+      } catch {
+        // A failed request is the same user-facing situation as no network.
+        renderUpdate({ state: "unavailable", current_version: current });
+      } finally {
+        btn.disabled = false;
+      }
+    };
+
+    btn.addEventListener("click", () => ask(true));
+    // First open reads the cache the startup check (usually) already filled.
+    // Deliberately not forced: that would turn every Settings open into a
+    // network request, which is exactly what the daily cache prevents.
+    ask(false);
   }
 
   /* ------------------------------------------------------------------ init */

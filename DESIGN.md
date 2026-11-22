@@ -39,8 +39,12 @@ tokei 用 OpenRouter 目录覆盖 317 个模型，缺价时**沿用同档位上�
 
 **刻意不跟随 tokei 的部分**（本项目的定位差异）：
 
-- **不做网络请求与额度查询**。tokei 的额度卡要复用登录态或读 Keychain + 调官方 API；
-  本项目对第三方目录严格只读，也不联网。价格表是手工维护的静态数据，不是联网抓的。
+- **不做额度查询**。tokei 的额度卡要复用登录态或读 Keychain + 调官方 API；
+  本项目对第三方目录严格只读。价格表是手工维护的静态数据，不是联网抓的。
+- **唯一的联网是版本更新检查**（`updates.py`）。它只向 GitHub 问「最新 tag 是什么」，
+  结果缓存 24 小时、每天最多一个请求、失败静默降级为「无法检查」。
+  不发机器标识、不发使用数据、不发数据库内容。这是全项目唯一的外网出口，
+  所以刻意隔离在单独模块里，`grep updates` 就能审完全部。
 - **不做 macOS 菜单栏 / 多设备同步 / 年度回顾**。这些是 GUI 应用能力，本项目是 CLI + 单页 Web。
 
 ### 2. [magpie](https://magpie.im) 本机网关 — 会话标题与 provider 的真实来源
@@ -476,7 +480,7 @@ JSONL 只在文件开头若干行里找 `cwd`（Codex 在第一条、Claude 很�
 
 ```bash
 # 在仓库根目录（agent_token_radar/ 的上一级）运行
-python -m unittest discover -s tests -p 'test_*.py'   # 223 个测试：桶映射 + 幂等性 + provider 来源 + 项目维度 + 切行 + 缓存命中率 + 端口顺延 + 费用估算
+python -m unittest discover -s tests -p 'test_*.py'   # 249 个测试：桶映射 + 幂等性 + provider 来源 + 项目维度 + 切行 + 缓存命中率 + 端口顺延 + 费用估算
 python -m agent_token_radar scan                       # 全量扫描冒烟
 python _build_icons.py --check                         # 确认 icons.py 与源规格一致（在 agent_token_radar/ 内）
 ```

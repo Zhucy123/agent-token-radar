@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import os
 import threading
 import time
 from contextlib import asynccontextmanager
@@ -31,6 +32,7 @@ from .scanner import Scanner
 from .store import Store
 
 from . import __version__
+from . import updates
 
 logger = logging.getLogger("agent_token_radar.web")
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -46,6 +48,32 @@ def _bounds(rng: str) -> tuple[int | None, int | None]:
         return _range_bounds(rng)
     except ValueError:
         return None, None
+
+
+#: Set AGENT_TOKEN_RADAR_NO_UPDATE_CHECK=1 to disable the startup check
+#: entirely. Documented because an offline install should not retry every launch.
+_NO_UPDATE_ENV = "AGENT_TOKEN_RADAR_NO_UPDATE_CHECK"
+
+
+def _start_update_check() -> None:
+    """Look for a newer release on a daemon thread.
+
+    Runs in the background for two reasons: the request must never delay
+    startup, and a network timeout must never be visible as a slow page. The
+    daily cache inside :func:`updates.check_for_update` does the real work here
+    -- a warm cache makes this a file read that returns immediately.
+    """
+    if os.environ.get(_NO_UPDATE_ENV, "").strip() not in ("", "0", "false"):
+        logger.debug("update check disabled by %s", _NO_UPDATE_ENV)
+        return
+
+    def _run() -> None:
+        try:
+            updates.check_for_update(__version__)
+        except Exception:  # pragma: no cover - must never kill the thread host
+            logger.debug("startup update check failed", exc_info=True)
+
+    threading.Thread(target=_run, name="update-check", daemon=True).start()
 
 
 class DashboardState:
@@ -196,6 +224,7 @@ def create_app(scan_interval: int = 30) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         state.start()
+        _start_update_check()
         yield
         state.stop()
 
@@ -255,6 +284,17 @@ def create_app(scan_interval: int = 30) -> FastAPI:
             "supported": list(SUPPORTED),
             "strings": STRINGS[code],
         })
+
+    @app.get("/api/update")
+    def update(force: bool = Query(False)) -> JSONResponse:
+        """Is there a newer release? Cached for a day unless ``force``.
+
+        This is the ONE endpoint that can reach the internet. It is isolated
+        behind ``updates.check_for_update`` so a build with no network behaves
+        exactly like a normal one: the call returns ``state == "unavailable"``
+        and the UI simply shows nothing.
+        """
+        return JSONResponse(updates.check_for_update(__version__, force=force))
 
     if STATIC_DIR.is_dir():
         # StaticFiles sends ETag/Last-Modified but no Cache-Control, so browsers

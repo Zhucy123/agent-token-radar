@@ -323,6 +323,22 @@
       </button>
     </header>
     <div id="settingsBody" class="settings-body"></div>
+    <!-- Update status. Sits outside #settingsBody so it is not rebuilt when a
+         settings field changes, and outside the SETTINGS table because it is a
+         one-off action with server state, not a stored preference. -->
+    <section id="updateBox" class="update-box" aria-labelledby="updateTitle">
+      <h3 id="updateTitle" class="update-title" data-i18n="update.title">版本更新</h3>
+      <p id="updateStatus" class="update-status" role="status" aria-live="polite"
+         data-i18n="update.never">尚未检查</p>
+      <p class="update-actions">
+        <button type="button" id="updateCheck" class="update-check"
+                data-i18n="update.check">检查更新</button>
+        <a id="updateDownload" class="update-download" href="#" target="_blank"
+           rel="noopener noreferrer" hidden data-i18n="update.download">前往下载</a>
+      </p>
+      <p id="updateMeta" class="update-meta"></p>
+      <p class="update-privacy" data-i18n="update.privacy">每天最多查询一次 GitHub，只读取最新版本号，不上传任何使用数据。</p>
+    </section>
     <footer class="settings-foot">
       <button type="button" id="settingsReset" class="settings-reset"
               data-i18n="settings.reset">恢复默认</button>

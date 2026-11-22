@@ -7,7 +7,7 @@ Measures **token usage** for every AI agent on your machine and turns it into a
 agent's session logs / SQLite read-only, normalises everything into one local
 database, and serves it through a CLI report and a local web dashboard.
 
-**25 agents · Chinese/English · fully local · no network requests · read-only**
+**25 agents · Chinese/English · local data · read-only · network only to check for updates**
 
 <p>
 <a href="#install"><b>↓ Install</b></a> ·
@@ -219,7 +219,7 @@ English.
 
 ```bash
 # tests (PYTHONPATH must point at tests/)
-PYTHONPATH=tests python -m unittest discover -s tests -p 'test_*.py'   # 223 tests
+PYTHONPATH=tests python -m unittest discover -s tests -p 'test_*.py'   # 249 tests
 
 # scan smoke test
 python -m agent_token_radar scan
@@ -253,6 +253,12 @@ repeated scan upserts instead of double-counting.
   seven text colours and four outline widths. Changes apply immediately, survive
   a reload, and the first paint already uses the chosen size instead of flashing
   the default first.
+- **Update check**: the bottom of the settings dialog shows your version and
+  whether a newer one exists, with a direct download link. It runs once in the
+  background at startup and caches the answer for 24 hours (at most one request a
+  day), reading only a version tag and sending nothing about you. Offline or with
+  GitHub unreachable it quietly says it could not check, and nothing else is
+  affected. Set `AGENT_TOKEN_RADAR_NO_UPDATE_CHECK=1` to turn it off entirely.
 
 **Fixed**
 
@@ -289,7 +295,13 @@ and a Windows installer.
   price are costed; the rest are labelled and the coverage ratio is shown
 - **Strictly read-only** towards every third-party agent directory — nothing is
   written, moved or deleted there
-- **No network access**; the price table is hand-maintained static data
+- **The only network access is the update check**: at startup it asks GitHub for
+  the latest version tag and caches the answer for 24 hours, so it is at most one
+  request a day. It reads a version tag and nothing else — **no usage data and no
+  machine identifier is sent**. With no network, or GitHub unreachable, everything
+  works exactly as before; you just see no update notice. Set
+  `AGENT_TOKEN_RADAR_NO_UPDATE_CHECK=1` to switch it off entirely
+- **The price table is hand-maintained static data**, not scraped at runtime
 - **Unsigned**, so SmartScreen may warn "unknown publisher" on first run
 - Windows installer only; on Linux use `pip install`
 

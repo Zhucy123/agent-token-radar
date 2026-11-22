@@ -557,6 +557,70 @@
   }
   .settings-reset:hover { color: var(--ink-ui, var(--text)); border-color: var(--muted); }
 
+  /* ---------- update box ---------- */
+  /* Sits between the settings list and the footer. Kept visually quieter than
+     the settings themselves: it is a one-off action, not a preference. */
+  .update-box {
+    margin: 0 var(--space-5);
+    padding-block: var(--space-4);
+    border-block-start: 1px solid var(--line);
+  }
+  .update-title {
+    margin: 0 0 var(--space-2);
+    font-size: var(--text-sm);
+    font-weight: calc(600 * var(--fw-scale, 1));
+    color: var(--muted);
+    letter-spacing: 0.02em;
+  }
+  .update-status {
+    margin: 0 0 var(--space-2);
+    font-size: var(--text-base);
+    color: var(--text);
+    /* The version string is quoted inside the sentence; keep it monospaced so
+       digits do not shift width as the number changes. */
+    font-variant-numeric: tabular-nums;
+  }
+  /* A newer release is the one state worth emphasising. */
+  .update-status[data-state="update_available"] { color: var(--brand-strong, var(--brand)); }
+  .update-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+    margin: 0 0 var(--space-2);
+  }
+  .update-check,
+  .update-download {
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--muted);
+    font: inherit;
+    font-size: var(--text-base);
+    cursor: pointer;
+    min-block-size: 2.25rem;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+  }
+  .update-check:hover:not(:disabled),
+  .update-download:hover {
+    color: var(--ink-ui, var(--text));
+    border-color: var(--muted);
+  }
+  .update-check:disabled { opacity: 0.6; cursor: progress; }
+  .update-download[hidden] { display: none; }
+  .update-meta,
+  .update-privacy {
+    margin: 0;
+    color: var(--muted);
+    font-size: var(--text-xs);
+    line-height: 1.5;
+  }
+  .update-meta:empty { display: none; }
+  .update-privacy { margin-block-start: var(--space-2); opacity: 0.85; }
+
   .status {
     flex-basis: 100%;
     margin: 0;
@@ -1304,6 +1368,7 @@
     /* Icon-only controls and the settings rows are touch targets too. */
     .btn-icon-only, .settings-close { inline-size: 2.75rem; block-size: 2.75rem; }
     .setting-opt, .settings-reset { min-block-size: 2.75rem; }
+    .update-check, .update-download { min-block-size: 2.75rem; }
     /* The project expander is the only way into a merged project row, and it
        was left at its 32px desktop size while every other control grew to
        44px on touch. 2.75rem = 44px at the default root size. */

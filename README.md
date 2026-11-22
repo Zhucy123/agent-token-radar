@@ -5,7 +5,7 @@
 统计本机各个 AI Agent 的 **Token 用量**，并按厂商官方标价给出**参考费用估算**。
 只读扫描本机会话日志 / SQLite，归一化入库，提供 CLI 报表与本地 Web 仪表盘。
 
-**25 个 Agent · 中英双语 · 纯本地 · 无网络请求 · 只读**
+**25 个 Agent · 中英双语 · 本地数据 · 只读 · 仅在检查更新时联网**
 
 <p>
 <a href="#安装"><b>↓ 安装</b></a> ·
@@ -188,7 +188,7 @@ agent-token-radar desktop                       # 原生桌面窗口
 
 ```bash
 # 测试（需要 PYTHONPATH 指向 tests）
-PYTHONPATH=tests python -m unittest discover -s tests -p 'test_*.py'   # 223 个测试
+PYTHONPATH=tests python -m unittest discover -s tests -p 'test_*.py'   # 249 个测试
 
 # 扫描冒烟
 python -m agent_token_radar scan
@@ -213,6 +213,7 @@ ISCC.exe agent-token-radar.iss                                  # -> dist-instal
 
 - **页面跳转栏**：顶部一排六个按钮（汇总 / 消耗趋势 / 按 Agent 分布 / 按 Agent / Model / 按项目分布 / Session 排行），点击直达对应区块。滚动时自动高亮当前区块，窄窗口按钮折成两行仍能对齐。
 - **文字设置窗口**（右上角齿轮）：字号 4 档、字体 23 种（按无衬线 / 衬线 / 中文 / 等宽分组）、字重 4 档、倾斜、文字颜色 7 种、描边 4 档。改完立即生效、刷新后保留，且首屏直接以设定值渲染，不会先闪一下默认样式。
+- **版本更新检查**：设置窗口底部显示当前版本与是否有新版，可直接点「前往下载」。启动时在后台查一次，结果缓存 24 小时（一天最多一个请求），只读取版本标签、不上传任何数据。断网或 GitHub 不通时安静显示「暂时无法检查」，不影响使用；设 `AGENT_TOKEN_RADAR_NO_UPDATE_CHECK=1` 可彻底关闭。
 
 **修复**
 
@@ -232,7 +233,8 @@ ISCC.exe agent-token-radar.iss                                  # -> dist-instal
 
 - **费用是参考估算，不是账单。** 按官方标价折算，只覆盖有公开价的模型；无价的如实标注并单独显示覆盖率
 - **对第三方目录严格只读**，不写入、不删除、不修改任何 Agent 自己的数据
-- **不联网**，价格表是手工维护的静态数据
+- **唯一的联网是检查更新**：启动时向 GitHub 查一次最新版本号，结果缓存 24 小时，所以一天最多一个请求。只读版本标签，**不上传任何使用数据、不含机器标识**。不联网或 GitHub 不通时功能完全不受影响，只是看不到更新提示。设 `AGENT_TOKEN_RADAR_NO_UPDATE_CHECK=1` 可彻底关掉
+- **价格表是手工维护的静态数据**，不是联网抓的
 - **未签名**，首次运行 SmartScreen 可能提示「未知发布者」
 - 只有 Windows 安装包，Linux 目前用 `pip install`
 
