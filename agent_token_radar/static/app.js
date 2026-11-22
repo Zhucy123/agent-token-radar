@@ -539,8 +539,17 @@
    * `agentCol` is the column index (1-based) that should render an agent icon
    * instead of plain text, or -1 for none. Positional on purpose: matching on
    * the header text would break as soon as the language changes.
+   *
+   * `moneyCol` is the column index (also 1-based) holding a USD amount, or -1
+   * for none. A money column must be rendered by ``moneyCell`` rather than
+   * copied through as text: the raw value is a float, so $8.171517142 would
+   * print with nine decimals and its neighbours in the same table would not
+   * agree with the Model and project tables that DO format. ``moneyCell`` also
+   * keeps the NULL -> dash meaning ("no published price"), which a plain
+   * toFixed would destroy.
    */
-  function fillTable(tableId, headers, rows, numericFrom, firstIsAgent = false, agentCol = -1) {
+  function fillTable(tableId, headers, rows, numericFrom, firstIsAgent = false,
+                     agentCol = -1, moneyCol = -1) {
     const tbody = $(tableId).querySelector("tbody");
     tbody.replaceChildren();
     if (!rows.length) {
@@ -565,6 +574,8 @@
         const value = row[i];
         if (i === agentCol) {
           td.appendChild(agentCell(value));
+        } else if (i === moneyCol) {
+          td.appendChild(moneyCell(value));
         } else if (value === null || value === undefined) {
           // Only one column can be null: cost, for a Model with no published
           // price. A dash says "unknown"; 0 would say "free".
@@ -782,7 +793,11 @@
         pct(x.cache_hit),
         fmt(x.uncached_input_tokens), fmt(x.cache_read_tokens), fmt(x.output_tokens),
         x.cost_usd,
-      ]), 1, true);
+      ]), 1, true, -1, 7);
+    //     ^numericFrom  ^firstIsAgent  ^agentCol  ^moneyCol
+    // moneyCol=7 is 参考费用 (the 8th column, 0-based index 7). Without it the
+    // raw float printed as $8.171517142 while the Model and project tables
+    // showed $8.17.
 
     // The model table is grouped by agent, so it renders itself.
     renderModelTable(data);
@@ -799,7 +814,7 @@
         fmt(x.events), fmt(x.total_tokens), pct(x.cache_hit),
         fmt(x.uncached_input_tokens), fmt(x.output_tokens),
         time(x.last_seen),
-      ]), 4, false, 2);;
+      ]), 4, false, 2);
 
     // Replace the placeholder session cell with title + id. Done here rather
     // than inside fillTable because this cell is the only two-line one, and a

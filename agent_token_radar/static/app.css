@@ -35,6 +35,11 @@
     --accent: var(--accent-light);
     --good: var(--good-light);
     --warn: var(--warn-light);
+    /* Text drawn ON the brand colour. White is right for the light theme's
+       darker blue but unreadable on the dark theme's lighter blue; the
+       @media/@supports blocks below swap it in. Same fallback pattern as the
+       colour tokens above. */
+    --on-brand: #ffffff;
 
     /* MANDATORY fallback for browsers without light-dark() support */
     @media (prefers-color-scheme: dark) {
@@ -43,6 +48,7 @@
       --line: var(--line-dark);   --brand: var(--brand-dark);
       --accent: var(--accent-dark); --good: var(--good-dark);
       --warn: var(--warn-dark);
+      --on-brand: #0d1016;
     }
     @supports (color: light-dark(white, black)) {
       --bg: light-dark(var(--bg-light), var(--bg-dark));
@@ -54,6 +60,7 @@
       --accent: light-dark(var(--accent-light), var(--accent-dark));
       --good: light-dark(var(--good-light), var(--good-dark));
       --warn: light-dark(var(--warn-light), var(--warn-dark));
+      --on-brand: light-dark(#ffffff, #0d1016);
     }
 
     /* -- tier 3: general UI ------------------------------------------ */
@@ -255,7 +262,13 @@
     gap: var(--space-2);
     border: 1px solid color-mix(in oklab, var(--brand) 70%, var(--line));
     background: var(--brand);
-    color: #fff;
+    /* The brand colour is LIGHT in the dark theme (#6ba4fb), so white text on
+       it measured 2.52:1 -- below the 4.5:1 WCAG AA floor for this 13px label.
+       The light theme's brand (#2563eb) is dark enough for white (5.17:1), so
+       the text colour has to follow the theme, not the "primary = white text"
+       habit. Dark text on the dark theme's brand measures 7.55:1.
+       --on-brand carries the same pair in the no-light-dark() fallback. */
+    color: var(--on-brand);
     padding: var(--space-2) var(--space-4);
     border-radius: 10px;
     cursor: pointer;
@@ -961,6 +974,10 @@
   @media (pointer: coarse) {
     .ranges button, .lang-switch button { min-block-size: 2.75rem; padding-inline: var(--space-3); }
     .btn-primary { min-block-size: 2.75rem; }
+    /* The project expander is the only way into a merged project row, and it
+       was left at its 32px desktop size while every other control grew to
+       44px on touch. 2.75rem = 44px at the default root size. */
+    .project-toggle { min-inline-size: 2.75rem; min-block-size: 2.75rem; }
   }
 
   /* ---------- high contrast ---------- */
