@@ -29,8 +29,8 @@ database, and serves it through a CLI report and a local web dashboard.
 
 ## The interface
 
-All screenshots below are the **real installed Windows desktop app**, not a
-browser tab.
+All screenshots below are the **packaged desktop app** running against this
+machine's real scan results — not sample data.
 
 **Summary and trend** — total tokens, cache-hit rate, input / output / cache read /
 reasoning, plus the reference cost and the share of tokens it covers, over a
