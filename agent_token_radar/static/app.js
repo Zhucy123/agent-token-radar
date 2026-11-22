@@ -272,6 +272,160 @@
         document.documentElement.dataset.ff = opt.value;
       },
     },
+    {
+      key: "fw",                      // localStorage: atr.fw
+      attr: "data-fw",                // <html data-fw="...">
+      type: "segmented",
+      label: "settings.fontWeight",
+      hint: "settings.fontWeight.hint",
+      // A WEIGHT MULTIPLIER, not an absolute weight.
+      //
+      // Every font-weight rule in the stylesheet reads
+      // `calc(<its own number> * var(--fw-scale, 1))`, so one value scales the
+      // whole ladder proportionally and relationships hold at every step.
+      //
+      // The obvious alternatives were measured and rejected in-browser:
+      // `font-weight: bolder` on <html> left all 24 declared weights untouched
+      // and only pushed body/td from 400 to 700 -- which darkens the body
+      // relative to the headings and INVERTS the hierarchy. A bare number
+      // (`600`) flattened six sampled elements to 3 distinct weights. calc() in
+      // font-weight IS supported (400 * 1.2 computed to 480), which is what
+      // makes the multiplier approach work.
+      options: [
+        { value: "light", label: "settings.fw.light", scale: "0.85" },
+        { value: "normal", label: "settings.fw.normal", scale: "1" },
+        { value: "medium", label: "settings.fw.medium", scale: "1.15" },
+        { value: "bold", label: "settings.fw.bold", scale: "1.25" },
+      ],
+      fallback: "normal",
+      apply(value) {
+        const opt = this.options.find((o) => o.value === value) || this.options[1];
+        document.documentElement.style.setProperty("--fw-scale", opt.scale);
+        document.documentElement.dataset.fw = opt.value;
+      },
+    },
+    {
+      key: "fst",                     // localStorage: atr.fst
+      attr: "data-fst",
+      type: "segmented",
+      label: "settings.fontStyle",
+      hint: "settings.fontStyle.hint",
+      options: [
+        { value: "normal", label: "settings.fst.normal", style: "normal" },
+        { value: "italic", label: "settings.fst.italic", style: "italic" },
+      ],
+      fallback: "normal",
+      apply(value) {
+        const opt = this.options.find((o) => o.value === value) || this.options[0];
+        document.documentElement.style.setProperty("--font-style-ui", opt.style);
+        document.documentElement.dataset.fst = opt.value;
+      },
+    },
+    {
+      key: "ink",                     // localStorage: atr.ink
+      attr: "data-ink",
+      // A dropdown, not a colour picker: a free picker invites an unreadable
+      // page (white text on white) with no undo. These are checked pairs that
+      // keep AA contrast against the current theme's background, plus an
+      // explicit "default" that restores the themed colour.
+      type: "select",
+      label: "settings.textColor",
+      hint: "settings.textColor.hint",
+      options: [
+        {
+          group: "settings.ink.g.default",
+          value: "default",
+          label: "settings.ink.default",
+          // Empty string => remove the property, so --ink-ui falls back to the
+          // theme's --text and follows dark/light mode again.
+          ink: "",
+        },
+        {
+          group: "settings.ink.g.tones",
+          value: "slate",
+          label: "settings.ink.slate",
+          ink: "light-dark(#334155, #cbd5e1)",
+        },
+        {
+          group: "settings.ink.g.tones",
+          value: "ink",
+          label: "settings.ink.ink",
+          ink: "light-dark(#0f172a, #f1f5f9)",
+        },
+        {
+          group: "settings.ink.g.tones",
+          value: "blue",
+          label: "settings.ink.blue",
+          ink: "light-dark(#1d4ed8, #93c5fd)",
+        },
+        {
+          group: "settings.ink.g.tones",
+          value: "green",
+          label: "settings.ink.green",
+          ink: "light-dark(#166534, #86efac)",
+        },
+        {
+          group: "settings.ink.g.tones",
+          value: "violet",
+          label: "settings.ink.violet",
+          ink: "light-dark(#5b21b6, #c4b5fd)",
+        },
+        {
+          group: "settings.ink.g.tones",
+          value: "sepia",
+          label: "settings.ink.sepia",
+          ink: "light-dark(#5b4636, #d8c3a5)",
+        },
+      ],
+      fallback: "default",
+      apply(value) {
+        const opt = this.options.find((o) => o.value === value) || this.options[0];
+        const root = document.documentElement;
+        if (opt.ink) root.style.setProperty("--ink-ui", opt.ink);
+        else root.style.removeProperty("--ink-ui");
+        root.dataset.ink = opt.value;
+      },
+    },
+    {
+      key: "stroke",                  // localStorage: atr.stroke
+      attr: "data-stroke",
+      type: "segmented",
+      label: "settings.textStroke",
+      hint: "settings.textStroke.hint",
+      // Off is the default so the page looks untouched until asked. Kept
+      // intentionally subtle: a heavy stroke destroys CJK legibility because
+      // the strokes run into each other, so the widest step is 1.2px.
+      options: [
+        { value: "off", label: "settings.stroke.off", width: "0", colour: "" },
+        {
+          value: "thin",
+          label: "settings.stroke.thin",
+          width: "0.4px",
+          colour: "light-dark(#94a3b8, #64748b)",
+        },
+        {
+          value: "medium",
+          label: "settings.stroke.medium",
+          width: "0.8px",
+          colour: "light-dark(#64748b, #94a3b8)",
+        },
+        {
+          value: "strong",
+          label: "settings.stroke.strong",
+          width: "1.2px",
+          colour: "light-dark(#475569, #cbd5e1)",
+        },
+      ],
+      fallback: "off",
+      apply(value) {
+        const opt = this.options.find((o) => o.value === value) || this.options[0];
+        const root = document.documentElement;
+        root.style.setProperty("--stroke-w", opt.width);
+        if (opt.colour) root.style.setProperty("--stroke-c", opt.colour);
+        else root.style.removeProperty("--stroke-c");
+        root.dataset.stroke = opt.value;
+      },
+    },
   ];
 
   const settingStore = {

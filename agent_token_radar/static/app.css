@@ -102,6 +102,39 @@
        makes no network requests, so no webfont is loaded. */
     --font-ui: system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
 
+    /* ---- text style, written by Settings -------------------------------
+       These are SEPARATE tokens rather than a rule on body, because each has a
+       different blast radius and the chart has to read two of them from JS:
+
+       --fw-scale         a MULTIPLIER applied inside each font-weight rule:
+                          `font-weight: calc(650 * var(--fw-scale, 1))`. This is
+                          the only mechanism that scales the page's weight
+                          LADDER instead of flattening it. Measured in-browser:
+                          `bolder`/`lighter` on <html> leaves every rule that
+                          sets its own weight untouched (it only moved body and
+                          td, 400 -> 700/100), so it darkened the body text and
+                          flipped the hierarchy instead of boosting it. calc()
+                          inside font-weight is supported (verified: 400 *
+                          1.2 computed to 480), so one multiplier scales all 24
+                          hand-picked weights proportionally. Default 1 = the
+                          stylesheet as designed.
+       --font-style-ui    normal | italic, inherited from <html>.
+       --ink-ui           the reading colour for body text. Deliberately NOT
+                          --text: --text is also what the canvas and the borders
+                          resolve, and a user recolour must not repaint rules,
+                          grid lines or the "unpriced" dash.
+       --stroke-w / --stroke-c
+                          text outline. Off by default (0) so nothing changes
+                          until asked for. Rendered with -webkit-text-stroke,
+                          which Chromium (the desktop engine) and every current
+                          browser support; the fallback is simply no outline.
+       ------------------------------------------------------------------- */
+    --fw-scale: 1;
+    --font-style-ui: inherit;
+    --ink-ui: inherit;
+    --stroke-w: 0;
+    --stroke-c: currentColor;
+
     accent-color: var(--brand);
     /* Scrollbar thumb vs track needs 3:1; --muted is the safe choice. */
     scrollbar-color: var(--muted) transparent;
@@ -124,6 +157,10 @@
 @layer base {
   html {
     font-family: var(--font-ui);
+    /* Text-style settings. `inherit` is the initial value, so with no setting
+       the cascade behaves exactly as before. The weight is handled by
+       --fw-scale inside each font-weight rule, not here. */
+    font-style: var(--font-style-ui);
     /* Anchor jumps must not land under the sticky bar. */
     scroll-padding-block-start: calc(var(--topbar-h) + var(--space-4));
     -webkit-text-size-adjust: 100%;
@@ -131,9 +168,17 @@
   body {
     margin: 0;
     background: var(--bg);
-    color: var(--text);
+    /* --ink-ui falls back to --text, so the default look is unchanged. */
+    color: var(--ink-ui, var(--text));
     font-size: var(--text-md);
+    /* Declared so the weight multiplier reaches body text too: 400 is the
+       implicit initial value, so an inherited calc() never applied here. */
+    font-weight: calc(400 * var(--fw-scale, 1));
     line-height: 1.5;
+    /* Text outline. 0 by default (see the token block); the paint order matters
+       -- stroke first, fill second -- or the outline eats the glyph interior on
+       thin fonts. */
+    -webkit-text-stroke: var(--stroke-w) var(--stroke-c);
     /* Subtle vertical wash so the page has depth without a hard seam at the
        first section. */
     background-image: linear-gradient(
@@ -248,14 +293,14 @@
     cursor: pointer;
     border-radius: var(--radius-sm);
     font: inherit;
-    font-weight: 600;
+    font-weight: calc(600 * var(--fw-scale, 1));
     /* 44px on touch: a 34px target is hard to hit with a thumb. */
     min-block-size: 2.125rem;
     transition: background 120ms ease, color 120ms ease, box-shadow 120ms ease;
   }
   .ranges button { padding: var(--space-2) var(--space-3); font-size: var(--text-base); }
   .lang-switch button { padding: var(--space-1) var(--space-2); font-size: var(--text-sm); letter-spacing: .02em; }
-  .ranges button:hover, .lang-switch button:hover { color: var(--text); }
+  .ranges button:hover, .lang-switch button:hover { color: var(--ink-ui, var(--text)); }
   :where(.ranges, .lang-switch) button[aria-pressed="true"] {
     background: var(--surface-raised);
     color: var(--brand);
@@ -279,7 +324,7 @@
     border-radius: 10px;
     cursor: pointer;
     font: inherit;
-    font-weight: 650;
+    font-weight: calc(650 * var(--fw-scale, 1));
     font-size: var(--text-base);
     min-block-size: 2.25rem;
     box-shadow: var(--shadow-1);
@@ -302,7 +347,7 @@
     padding-inline: var(--space-1);
   }
   /* :has() instead of a JS-managed class: the label follows its own checkbox. */
-  .auto:has(input:checked) { color: var(--text); }
+  .auto:has(input:checked) { color: var(--ink-ui, var(--text)); }
 
   /* ---------- settings: trigger + modal ---------- */
 
@@ -324,7 +369,7 @@
     transition: color 120ms ease, border-color 120ms ease;
   }
   .btn-icon-only svg { inline-size: 1.125rem; block-size: 1.125rem; }
-  .btn-icon-only:hover { color: var(--text); border-color: var(--muted); }
+  .btn-icon-only:hover { color: var(--ink-ui, var(--text)); border-color: var(--muted); }
 
   /* MANDATORY: `dialog:modal` targets the modal state only -- setting display
      on a bare `dialog` would override the closed state. */
@@ -341,12 +386,14 @@
     /* Wide enough that four segments fit on one row at the largest text size;
        the grid inside falls back to two columns rather than overflowing. */
     inline-size: min(34rem, calc(100vw - 2 * var(--space-4)));
-    max-block-size: min(80vh, 40rem);
+    /* Six setting groups now live here, so take most of the viewport height and
+       let only .settings-body scroll -- the header and footer button stay put. */
+    max-block-size: min(88vh, 48rem);
     padding: 0;
     border: 1px solid var(--line);
     border-radius: var(--radius-lg);
     background: var(--panel);
-    color: var(--text);
+    color: var(--ink-ui, var(--text));
     box-shadow: var(--shadow-2);
     overflow: hidden;
   }
@@ -379,7 +426,7 @@
     cursor: pointer;
   }
   .settings-close svg { inline-size: 1.125rem; block-size: 1.125rem; }
-  .settings-close:hover { color: var(--text); background: var(--surface-sunken); }
+  .settings-close:hover { color: var(--ink-ui, var(--text)); background: var(--surface-sunken); }
 
   .settings-body {
     display: flex;
@@ -396,7 +443,7 @@
   .setting-label {
     padding: 0;
     font-size: var(--text-base);
-    font-weight: 650;
+    font-weight: calc(650 * var(--fw-scale, 1));
   }
   .setting-hint {
     margin: var(--space-1) 0 var(--space-3);
@@ -425,7 +472,7 @@
     padding: var(--space-1) var(--space-2);
     border-radius: var(--radius-sm);
     font-size: var(--text-sm);
-    font-weight: 600;
+    font-weight: calc(600 * var(--fw-scale, 1));
     color: var(--muted);
     cursor: pointer;
     text-align: center;
@@ -465,7 +512,7 @@
     border: 1px solid var(--hairline);
     border-radius: 10px;
     background: var(--surface-sunken);
-    color: var(--text);
+    color: var(--ink-ui, var(--text));
     font: inherit;
     font-size: var(--text-sm);
     cursor: pointer;
@@ -482,12 +529,12 @@
      options carry their own font-family inline so each name previews its face. */
   .setting-dropdown option {
     background: var(--surface-raised);
-    color: var(--text);
+    color: var(--ink-ui, var(--text));
     font-size: var(--text-md);
   }
   .setting-dropdown optgroup {
     color: var(--muted);
-    font-weight: 600;
+    font-weight: calc(600 * var(--fw-scale, 1));
   }
   .settings-foot {
     display: flex;
@@ -506,7 +553,7 @@
     cursor: pointer;
     min-block-size: 2.25rem;
   }
-  .settings-reset:hover { color: var(--text); border-color: var(--muted); }
+  .settings-reset:hover { color: var(--ink-ui, var(--text)); border-color: var(--muted); }
 
   .status {
     flex-basis: 100%;
@@ -565,7 +612,7 @@
   }
   .badge-unofficial {
     font-size: var(--text-xs);
-    font-weight: 500;
+    font-weight: calc(500 * var(--fw-scale, 1));
     color: var(--muted);
     border: 1px solid var(--line);
     border-radius: 999px;
@@ -605,7 +652,7 @@
   .section-title {
     margin: var(--space-8) 0 var(--space-3);
     font-size: var(--text-lg);
-    font-weight: 650;
+    font-weight: calc(650 * var(--fw-scale, 1));
     letter-spacing: -.01em;
     text-wrap: balance;
   }
@@ -650,7 +697,7 @@
   .card h3 {
     margin: 0;
     font-size: var(--text-sm);
-    font-weight: 600;
+    font-weight: calc(600 * var(--fw-scale, 1));
     color: var(--muted);
     text-transform: uppercase;
     letter-spacing: .06em;
@@ -661,7 +708,7 @@
   .card .value {
     margin: var(--space-2) 0 2px;
     font-size: var(--fs-metric);
-    font-weight: 700;
+    font-weight: calc(700 * var(--fw-scale, 1));
     letter-spacing: -.03em;
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
@@ -772,8 +819,8 @@
     align-items: center;
     gap: var(--space-2);
     font-size: var(--text-sm);
-    font-weight: 550;
-    color: var(--text);
+    font-weight: calc(550 * var(--fw-scale, 1));
+    color: var(--ink-ui, var(--text));
     min-inline-size: 0;
   }
   .share-track {
@@ -808,7 +855,7 @@
     z-index: 3;
     pointer-events: none;
     background: var(--surface-raised);
-    color: var(--text);
+    color: var(--ink-ui, var(--text));
     border: 1px solid var(--hairline);
     border-radius: var(--radius-sm);
     padding: var(--space-2) var(--space-3);
@@ -821,7 +868,7 @@
        box, and minus 2x the 8px inset the placement logic reserves. */
     max-inline-size: min(18rem, calc(100% - 1rem));
   }
-  .chart-tip .tip-head { font-weight: 650; margin-block-end: 2px; }
+  .chart-tip .tip-head { font-weight: calc(650 * var(--fw-scale, 1)); margin-block-end: 2px; }
   .chart-tip .tip-row { display: flex; align-items: center; gap: var(--space-1); }
   /* The fold-in row for a bar split across more Agents than fit. */
   .chart-tip .tip-more { color: var(--muted); font-style: italic; }
@@ -879,6 +926,11 @@
     text-align: start;
     border-block-end: 1px solid var(--hairline);
     white-space: nowrap;
+    /* Body cells inherit body's weight (400), which the --fw-scale multiplier
+       never reaches because 400 is the implicit initial value, not a declared
+       rule. Declaring it makes the weight setting apply here too; without this
+       the table stayed at 400 while every label around it got heavier. */
+    font-weight: calc(400 * var(--fw-scale, 1));
   }
   thead th {
     background: var(--surface-raised);
@@ -886,7 +938,7 @@
     text-transform: uppercase;
     letter-spacing: .05em;
     color: var(--muted);
-    font-weight: 650;
+    font-weight: calc(650 * var(--fw-scale, 1));
     /* A hairline under the sticky header: the only shadow that survives
        forced-colors mode is a border, so this is a border. */
     box-shadow: inset 0 -1px 0 var(--line);
@@ -895,7 +947,7 @@
     position: sticky;
     inset-inline-start: 0;
     background: var(--panel);
-    font-weight: 600;
+    font-weight: calc(600 * var(--fw-scale, 1));
     text-align: start;
   }
   td.num, th.num { text-align: end; font-variant-numeric: tabular-nums; }
@@ -931,23 +983,23 @@
     border-block-start: 1px solid var(--line);
     border-block-end: 1px solid var(--line);
     padding-block: var(--space-2);
-    font-weight: 650;
+    font-weight: calc(650 * var(--fw-scale, 1));
   }
   .model-group th { position: static; } /* sticky column would cover it */
   .model-group .group-share {
     margin-inline-start: var(--space-2);
     font-size: var(--text-xs);
-    font-weight: 500;
+    font-weight: calc(500 * var(--fw-scale, 1));
     color: var(--muted);
     font-variant-numeric: tabular-nums;
   }
-  .model-name { display: block; font-weight: 600; }
+  .model-name { display: block; font-weight: calc(600 * var(--fw-scale, 1)); }
 
   .project-name {
     display: block;
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     font-size: var(--text-sm);
-    font-weight: 500;
+    font-weight: calc(500 * var(--fw-scale, 1));
     max-inline-size: 48ch;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -980,7 +1032,7 @@
     background: color-mix(in oklab, currentColor 3%, transparent);
     color: var(--muted);
   }
-  .project-child .project-name { font-weight: 400; cursor: default; }
+  .project-child .project-name { font-weight: calc(400 * var(--fw-scale, 1)); cursor: default; }
   .project-branch { color: var(--muted); }
   /* The routing alias the agent logged: context, not the answer. */
   .model-alias {
@@ -1001,7 +1053,7 @@
   }
   .model-provider {
     font-size: var(--text-xs);
-    font-weight: 400;
+    font-weight: calc(400 * var(--fw-scale, 1));
     color: var(--muted);
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   }
@@ -1015,7 +1067,7 @@
     padding: 0 5px;
     border-radius: 999px;
     font-size: var(--text-xs);
-    font-weight: 500;
+    font-weight: calc(500 * var(--fw-scale, 1));
     line-height: 1.35;
     vertical-align: 1px;
     cursor: help;
@@ -1030,7 +1082,7 @@
   /* Session cell: the title is what a human recognises, the id is the receipt. */
   .session-title {
     display: block;
-    font-weight: 600;
+    font-weight: calc(600 * var(--fw-scale, 1));
     max-inline-size: 46ch;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1040,7 +1092,7 @@
     display: block;
     margin-block-start: 1px;
     font-size: var(--text-xs);
-    font-weight: 400;
+    font-weight: calc(400 * var(--fw-scale, 1));
     color: var(--muted);
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     max-inline-size: 46ch;
@@ -1048,7 +1100,7 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .session-id.only { font-size: var(--text-sm); color: var(--text); font-weight: 500; }
+  .session-id.only { font-size: var(--text-sm); color: var(--ink-ui, var(--text)); font-weight: calc(500 * var(--fw-scale, 1)); }
 
   /* ---------- footer ---------- */
   footer {
@@ -1071,8 +1123,8 @@
   .footer-icons { font-size: var(--text-xs); opacity: .85; }
   .footer-lead {
     margin-block-start: var(--space-2);
-    font-weight: 600;
-    color: var(--text);
+    font-weight: calc(600 * var(--fw-scale, 1));
+    color: var(--ink-ui, var(--text));
   }
   .footer-caveat { font-size: var(--text-xs); }
 
@@ -1123,7 +1175,7 @@
     font-size: var(--text-xs);
     line-height: 1.25;
     text-align: center;
-    color: var(--text);
+    color: var(--ink-ui, var(--text));
     /* Long names ("Qoder Desktop", "Prime Coding Agent") must wrap inside the
        tile instead of widening the grid column. */
     overflow-wrap: anywhere;
@@ -1200,7 +1252,7 @@
     :root { --hairline: light-dark(#c5ceda, #39435a); }
     .card { border-color: var(--line); }
     tbody th, td { border-block-end-color: var(--line); }
-    .note, .card .sub, .status { color: var(--text); }
+    .note, .card .sub, .status { color: var(--ink-ui, var(--text)); }
   }
 
   /* ---------- forced colors ---------- */

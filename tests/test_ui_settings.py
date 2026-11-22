@@ -203,6 +203,10 @@ const root = {
     get fontSize() { return this._fs; },
     setProperty(k, v) { this._p[k] = v; },
     getPropertyValue(k) { return this._p[k] || ""; },
+    // The text-colour "default" and the outline's "off" step REMOVE the
+    // property so the theme default takes over again; a stub without this made
+    // both settings throw.
+    removeProperty(k) { const v = this._p[k]; delete this._p[k]; return v || ""; },
   },
   dataset: {},
 };
@@ -343,6 +347,155 @@ console.log(JSON.stringify(out));
             self.assertTrue(token, f"{value} did not write --font-ui")
         self.assertIn("monospace", got["cascadia"])
         self.assertIn("Georgia", got["georgia"])
+
+    # ---- text style: weight, italic, colour, outline -------------------
+
+    def test_every_font_weight_in_the_stylesheet_is_scaled(self) -> None:
+        """The multiplier only works if NOTHING sets a bare weight.
+
+        A single ont-weight: 600 anywhere would ignore the setting on that
+        element and, worse, break the ladder (that element would stop tracking
+        the rest). This is the guard for that.
+        """
+        css = (ROOT / "agent_token_radar" / "static" / "app.css").read_text(
+            encoding="utf-8")
+        # Strip comments first: the explanatory text mentions font-weight: 600.
+        css = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+        bare = [
+            (i, line.strip())
+            for i, line in enumerate(css.splitlines(), 1)
+            if re.search(r"font-weight:\s*\d{3}\s*;", line)
+        ]
+        self.assertEqual(
+            bare, [],
+            "these declarations bypass --fw-scale: " + repr(bare))
+
+    def test_body_and_cells_declare_a_weight(self) -> None:
+        """400 is the implicit initial value, so a calc() on <html> never
+        reaches body text or table cells unless those rules declare it."""
+        css = (ROOT / "agent_token_radar" / "static" / "app.css").read_text(
+            encoding="utf-8")
+        css = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+        body = re.search(r"\n  body \{(.*?)\n  \}", css, re.S)
+        self.assertIsNotNone(body, "body rule not found")
+        self.assertIn("--fw-scale", body.group(1),
+                      "body must declare a scaled weight")
+        cells = re.search(r"\n  th, td \{(.*?)\n  \}", css, re.S)
+        self.assertIsNotNone(cells, "th, td rule not found")
+        self.assertIn("--fw-scale", cells.group(1),
+                      "table cells must declare a scaled weight")
+
+    def test_weight_is_a_multiplier_not_an_absolute(self) -> None:
+        """A bare absolute weight would flatten the page's weight ladder.
+
+        Every font-weight rule reads `calc(<n> * var(--fw-scale, 1))`, so the
+        setting must write a scale factor. Measured in-browser: `bolder` on
+        <html> leaves declared weights alone and only moves body/td (400 ->
+        700), which inverts the hierarchy; a bare `600` collapsed six sampled
+        elements to three distinct weights.
+        """
+        got = self._run("""
+const s = SETTINGS.find(x => x.key === "fw");
+const out = {};
+for (const o of s.options) {
+  s.apply.call(s, o.value);
+  out[o.value] = document.documentElement.style.getPropertyValue("--fw-scale");
+}
+console.log(JSON.stringify(out));
+""")
+        for value, scale in got.items():
+            self.assertTrue(scale, f"{value} did not write --fw-scale")
+            # Must be a pure number: calc() multiplies by it, so "600" or
+            # "bolder" here would be a category error.
+            self.assertRegex(scale, r"^\d+(\.\d+)?$",
+                             f"{value} scale is not a number: {scale}")
+        # The scale must be ordered so the steps actually differ.
+        order = ["light", "normal", "medium", "bold"]
+        values = [float(got[k]) for k in order]
+        self.assertEqual(values, sorted(values),
+                         f"weight steps are not ordered: {values}")
+        self.assertEqual(float(got["normal"]), 1.0,
+                         "the default step must be exactly 1 (no change)")
+
+    def test_weight_never_exceeds_the_css_limit(self) -> None:
+        """The heaviest declared weight is 700; scale * 700 must stay <= 1000,
+        or the browser clamps and the top steps become indistinguishable."""
+        got = self._run("""
+const s = SETTINGS.find(x => x.key === "fw");
+console.log(JSON.stringify(s.options.map(o => [o.value, o.scale])));
+""")
+        heaviest_declared = 700
+        for value, scale in got:
+            product = float(scale) * heaviest_declared
+            self.assertLessEqual(product, 1000.0,
+                                 f"{value} would clamp at {product}")
+
+    def test_italic_writes_the_style_token(self) -> None:
+        got = self._run("""
+const s = SETTINGS.find(x => x.key === "fst");
+const out = {};
+for (const o of s.options) {
+  s.apply.call(s, o.value);
+  out[o.value] = document.documentElement.style.getPropertyValue("--font-style-ui");
+}
+console.log(JSON.stringify(out));
+""")
+        self.assertEqual(got, {"normal": "normal", "italic": "italic"})
+
+    def test_text_colour_default_clears_the_token(self) -> None:
+        """Choosing "default" must REMOVE the override, not write an empty
+        colour -- otherwise the page stops following dark/light mode."""
+        got = self._run("""
+const s = SETTINGS.find(x => x.key === "ink");
+s.apply.call(s, "blue");
+const afterBlue = document.documentElement.style.getPropertyValue("--ink-ui");
+s.apply.call(s, "default");
+const afterDefault = document.documentElement.style.getPropertyValue("--ink-ui");
+console.log(JSON.stringify({afterBlue, afterDefault}));
+""")
+        self.assertTrue(got["afterBlue"], "blue did not set --ink-ui")
+        self.assertEqual(got["afterDefault"], "",
+                         "default must clear --ink-ui so the theme wins again")
+
+    def test_every_text_colour_has_a_dark_value(self) -> None:
+        """Each tone must declare light-dark(...) so it stays readable when the
+        OS theme flips."""
+        got = self._run("""
+const s = SETTINGS.find(x => x.key === "ink");
+console.log(JSON.stringify(s.options.map(o => [o.value, o.ink || ""])));
+""")
+        for value, ink in got:
+            if value == "default":
+                self.assertEqual(ink, "",
+                                 "the default must not hard-code a colour")
+                continue
+            self.assertIn("light-dark(", ink,
+                          f"{value} has no dark-mode value: {ink}")
+
+    def test_outline_is_off_by_default_and_uses_the_tokens(self) -> None:
+        got = self._run("""
+const s = SETTINGS.find(x => x.key === "stroke");
+const out = {};
+for (const o of s.options) {
+  s.apply.call(s, o.value);
+  out[o.value] = {
+    w: document.documentElement.style.getPropertyValue("--stroke-w"),
+    c: document.documentElement.style.getPropertyValue("--stroke-c"),
+  };
+}
+console.log(JSON.stringify(out));
+""")
+        self.assertEqual(got["off"]["w"], "0",
+                         "the outline must be zero-width by default")
+        # Widest step must stay subtle: a heavy outline blurs CJK glyphs.
+        widest = max(float(v["w"].replace("px", ""))
+                     for v in got.values() if v["w"].endswith("px"))
+        self.assertLessEqual(widest, 1.5,
+                             f"outline too heavy for CJK text: {widest}px")
+        for value, v in got.items():
+            if value == "off":
+                continue
+            self.assertTrue(v["c"], f"{value} set a width but no colour")
 
     def test_applying_a_setting_redraws_the_chart(self) -> None:
         """Run the shipped applySetting body, not a copy of it."""
