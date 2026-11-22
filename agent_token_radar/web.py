@@ -50,9 +50,22 @@ def _bounds(rng: str) -> tuple[int | None, int | None]:
         return None, None
 
 
-#: Set AGENT_TOKEN_RADAR_NO_UPDATE_CHECK=1 to disable the startup check
-#: entirely. Documented because an offline install should not retry every launch.
+#: Set AGENT_TOKEN_RADAR_NO_UPDATE_CHECK=1 to disable update checking entirely.
+#: Honoured by BOTH the startup thread and the /api/update endpoint -- an offline
+#: install must not retry on launch, and must not reach the network when the user
+#: opens Settings either.
 _NO_UPDATE_ENV = "AGENT_TOKEN_RADAR_NO_UPDATE_CHECK"
+
+
+def _update_check_disabled() -> bool:
+    """True when the operator asked for no outbound traffic at all.
+
+    Case-insensitive: ``FALSE``/``False`` mean "do not disable", and treating
+    them as truthy would silently switch checking off for someone who wrote the
+    variable to leave it on.
+    """
+    raw = os.environ.get(_NO_UPDATE_ENV, "").strip().lower()
+    return raw not in ("", "0", "false", "no", "off")
 
 
 def _start_update_check() -> None:
@@ -63,7 +76,7 @@ def _start_update_check() -> None:
     daily cache inside :func:`updates.check_for_update` does the real work here
     -- a warm cache makes this a file read that returns immediately.
     """
-    if os.environ.get(_NO_UPDATE_ENV, "").strip() not in ("", "0", "false"):
+    if _update_check_disabled():
         logger.debug("update check disabled by %s", _NO_UPDATE_ENV)
         return
 
@@ -293,7 +306,20 @@ def create_app(scan_interval: int = 30) -> FastAPI:
         behind ``updates.check_for_update`` so a build with no network behaves
         exactly like a normal one: the call returns ``state == "unavailable"``
         and the UI simply shows nothing.
+
+        The disable switch has to be honoured HERE as well as in the startup
+        thread. Guarding only the startup check left the promise half-kept:
+        opening Settings would still call this endpoint and reach GitHub, so an
+        operator who set the variable to keep the machine offline would find it
+        talking to the network anyway.
         """
+        if _update_check_disabled():
+            return JSONResponse({
+                "state": "disabled",
+                "current_version": __version__,
+                "reason": f"disabled by {_NO_UPDATE_ENV}",
+                "cached": False,
+            })
         return JSONResponse(updates.check_for_update(__version__, force=force))
 
     if STATIC_DIR.is_dir():

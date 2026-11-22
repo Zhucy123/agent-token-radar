@@ -294,5 +294,85 @@ class EndpointTests(unittest.TestCase):
         self.assertEqual(r.json()["state"], "unavailable")
 
 
+class DisableSwitchTests(unittest.TestCase):
+    """AGENT_TOKEN_RADAR_NO_UPDATE_CHECK must mean NO outbound traffic.
+
+    The first version only guarded the startup thread. The endpoint was left
+    unguarded, so an operator who set the variable to keep a machine offline
+    still reached GitHub the moment they opened Settings -- the switch looked
+    like it worked because no request appeared at launch.
+    """
+
+    def setUp(self) -> None:
+        try:
+            from fastapi.testclient import TestClient  # noqa: F401
+        except Exception:  # pragma: no cover
+            self.skipTest("fastapi not installed")
+
+    def _client(self):
+        from fastapi.testclient import TestClient
+        from agent_token_radar.web import create_app
+        return TestClient(create_app(scan_interval=3600))
+
+    def test_endpoint_makes_no_request_when_disabled(self) -> None:
+        client = self._client()
+        with mock.patch.dict("os.environ",
+                             {"AGENT_TOKEN_RADAR_NO_UPDATE_CHECK": "1"}), \
+             mock.patch.object(updates, "_fetch_latest") as fetch, \
+             mock.patch.object(updates, "check_for_update") as check:
+            r = client.get("/api/update")
+        fetch.assert_not_called()
+        check.assert_not_called()
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["state"], "disabled")
+
+    def test_force_does_not_bypass_the_switch(self) -> None:
+        """A forced check is still a network request; the switch wins."""
+        client = self._client()
+        with mock.patch.dict("os.environ",
+                             {"AGENT_TOKEN_RADAR_NO_UPDATE_CHECK": "1"}), \
+             mock.patch.object(updates, "_fetch_latest") as fetch:
+            r = client.get("/api/update?force=true")
+        fetch.assert_not_called()
+        self.assertEqual(r.json()["state"], "disabled")
+
+    def test_startup_thread_is_not_spawned_when_disabled(self) -> None:
+        from agent_token_radar import web
+
+        with mock.patch.dict("os.environ",
+                             {"AGENT_TOKEN_RADAR_NO_UPDATE_CHECK": "1"}), \
+             mock.patch.object(web.threading, "Thread") as thread:
+            web._start_update_check()
+        thread.assert_not_called()
+
+    def test_switch_accepts_the_documented_spellings(self) -> None:
+        from agent_token_radar import web
+
+        for value in ("1", "true", "TRUE", "yes", "on"):
+            with mock.patch.dict("os.environ",
+                                 {"AGENT_TOKEN_RADAR_NO_UPDATE_CHECK": value}):
+                self.assertTrue(web._update_check_disabled(), value)
+
+    def test_switch_off_by_default_and_for_falsy_values(self) -> None:
+        from agent_token_radar import web
+
+        for value in ("", "0", "false", "FALSE"):
+            with mock.patch.dict("os.environ",
+                                 {"AGENT_TOKEN_RADAR_NO_UPDATE_CHECK": value}):
+                self.assertFalse(web._update_check_disabled(), repr(value))
+
+    def test_normal_check_still_reaches_the_module_when_enabled(self) -> None:
+        """The guard must not break the ordinary path."""
+        client = self._client()
+        with mock.patch.dict("os.environ",
+                             {"AGENT_TOKEN_RADAR_NO_UPDATE_CHECK": ""}), \
+             mock.patch.object(updates, "check_for_update",
+                               return_value={"state": "up_to_date",
+                                             "current_version": "0.0.2"}) as check:
+            r = client.get("/api/update")
+        check.assert_called_once()
+        self.assertEqual(r.json()["state"], "up_to_date")
+
+
 if __name__ == "__main__":
     unittest.main()

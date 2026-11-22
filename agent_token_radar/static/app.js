@@ -2379,6 +2379,13 @@
         dl.hidden = true;
         meta.textContent = `${t("update.current", { version: v })} · ${t("update.unavailableHint")}`;
         break;
+      case "disabled":
+        // The operator switched checking off on purpose; say so instead of
+        // implying the network is broken.
+        line.textContent = t("update.disabled");
+        dl.hidden = true;
+        meta.textContent = t("update.current", { version: v });
+        break;
       default:
         line.textContent = t("update.never");
         dl.hidden = true;
