@@ -110,6 +110,39 @@
       <button type="button" data-lang="en" aria-pressed="false" lang="en">EN</button>
     </div>
 
+    <!-- Update check lives in the toolbar, not behind Settings: it is something
+         you glance at, not a preference you configure.
+         The control shows the running VERSION rather than an icon. An icon here
+         has to compete with the Refresh button beside it and either reads as
+         "refresh" (circular arrow) or "download"/"info" (arrow or i in a circle)
+         -- all three are wrong for "am I current?". A version string says it
+         outright, and doubles as the answer once it is current.
+         The popover is a plain element toggled with aria-expanded rather than a
+         <dialog>: it must not steal focus or block the page for a version
+         number. When a newer release exists the button carries the accent
+         colour plus a dot, so the notice is visible without opening anything. -->
+    <div class="update-wrap">
+      <button type="button" id="updateBtn" class="update-btn"
+              aria-expanded="false" aria-controls="updatePanel"
+              data-i18n-aria="update.title">
+        <span id="updateVersion" class="update-version">v—</span>
+        <span class="update-badge" id="updateBadge" hidden aria-hidden="true"></span>
+      </button>
+      <div id="updatePanel" class="update-panel" hidden>
+        <h3 id="updateTitle" class="update-title" data-i18n="update.title">版本更新</h3>
+        <p id="updateStatus" class="update-status" role="status" aria-live="polite"
+           data-i18n="update.never">尚未检查</p>
+        <p id="updateMeta" class="update-meta"></p>
+        <p class="update-actions">
+          <button type="button" id="updateCheck" class="update-check"
+                  data-i18n="update.check">检查更新</button>
+          <a id="updateDownload" class="update-download" href="#" target="_blank"
+             rel="noopener noreferrer" hidden data-i18n="update.download">前往下载</a>
+        </p>
+        <p class="update-privacy" data-i18n="update.privacy">每天最多查询一次 GitHub，只读取最新版本号，不上传任何使用数据。</p>
+      </div>
+    </div>
+
     <!-- Opens the native modal below. `command`/`commandfor` means no click
          handler is needed; app.js falls back to showModal() where the Invoker
          Commands API is missing. No aria-expanded here: the browser owns it. -->
@@ -323,22 +356,6 @@
       </button>
     </header>
     <div id="settingsBody" class="settings-body"></div>
-    <!-- Update status. Sits outside #settingsBody so it is not rebuilt when a
-         settings field changes, and outside the SETTINGS table because it is a
-         one-off action with server state, not a stored preference. -->
-    <section id="updateBox" class="update-box" aria-labelledby="updateTitle">
-      <h3 id="updateTitle" class="update-title" data-i18n="update.title">版本更新</h3>
-      <p id="updateStatus" class="update-status" role="status" aria-live="polite"
-         data-i18n="update.never">尚未检查</p>
-      <p class="update-actions">
-        <button type="button" id="updateCheck" class="update-check"
-                data-i18n="update.check">检查更新</button>
-        <a id="updateDownload" class="update-download" href="#" target="_blank"
-           rel="noopener noreferrer" hidden data-i18n="update.download">前往下载</a>
-      </p>
-      <p id="updateMeta" class="update-meta"></p>
-      <p class="update-privacy" data-i18n="update.privacy">每天最多查询一次 GitHub，只读取最新版本号，不上传任何使用数据。</p>
-    </section>
     <footer class="settings-foot">
       <button type="button" id="settingsReset" class="settings-reset"
               data-i18n="settings.reset">恢复默认</button>

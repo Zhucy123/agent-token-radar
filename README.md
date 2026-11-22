@@ -188,7 +188,7 @@ agent-token-radar desktop                       # 原生桌面窗口
 
 ```bash
 # 测试（需要 PYTHONPATH 指向 tests）
-PYTHONPATH=tests python -m unittest discover -s tests -p 'test_*.py'   # 255 个测试
+PYTHONPATH=tests python -m unittest discover -s tests -p 'test_*.py'   # 271 个测试
 
 # 扫描冒烟
 python -m agent_token_radar scan
@@ -213,7 +213,7 @@ ISCC.exe agent-token-radar.iss                                  # -> dist-instal
 
 - **页面跳转栏**：顶部一排六个按钮（汇总 / 消耗趋势 / 按 Agent 分布 / 按 Agent / Model / 按项目分布 / Session 排行），点击直达对应区块。滚动时自动高亮当前区块，窄窗口按钮折成两行仍能对齐。
 - **文字设置窗口**（右上角齿轮）：字号 4 档、字体 23 种（按无衬线 / 衬线 / 中文 / 等宽分组）、字重 4 档、倾斜、文字颜色 7 种、描边 4 档。改完立即生效、刷新后保留，且首屏直接以设定值渲染，不会先闪一下默认样式。
-- **版本更新检查**：设置窗口底部显示当前版本与是否有新版，可直接点「前往下载」。启动时在后台查一次，结果缓存 24 小时（一天最多一个请求），只读取版本标签、不上传任何数据。断网或 GitHub 不通时安静显示「暂时无法检查」，不影响使用；设 `AGENT_TOKEN_RADAR_NO_UPDATE_CHECK=1` 可彻底关闭。
+- **版本更新检查**：顶部工具栏显示当前版本号（如 `v0.0.2`），点开可看是否有新版，并可直接「前往下载」；有新版本时按钮会亮起并带一个小圆点，不用点开就知道。启动时在后台查一次，结果缓存 24 小时（一天最多一个请求），只读取版本标签、不上传任何数据。断网或 GitHub 不通时安静显示「暂时无法检查」，不影响使用；设 `AGENT_TOKEN_RADAR_NO_UPDATE_CHECK=1` 可彻底关闭。
 
 **修复**
 

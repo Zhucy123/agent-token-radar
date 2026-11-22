@@ -557,14 +557,63 @@
   }
   .settings-reset:hover { color: var(--ink-ui, var(--text)); border-color: var(--muted); }
 
-  /* ---------- update box ---------- */
-  /* Sits between the settings list and the footer. Kept visually quieter than
-     the settings themselves: it is a one-off action, not a preference. */
-  .update-box {
-    margin: 0 var(--space-5);
-    padding-block: var(--space-4);
-    border-block-start: 1px solid var(--line);
+  /* ---------- update check (toolbar) ---------- */
+  /* Lives in the toolbar, not in Settings: it is something you glance at rather
+     than a preference. The control shows the version string; see the markup
+     comment for why an icon was the wrong choice here. */
+  .update-wrap { position: relative; display: inline-flex; }
+
+  .update-btn {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    min-block-size: 2.25rem;
+    padding: var(--space-1) var(--space-3);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--surface-sunken);
+    color: var(--muted);
+    font: inherit;
+    font-size: var(--text-sm);
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
   }
+  .update-btn:hover { color: var(--ink-ui, var(--text)); }
+  .update-btn[data-update="available"] {
+    color: var(--brand);
+    border-color: color-mix(in oklab, var(--brand) 45%, var(--line));
+  }
+
+  /* A dot when a newer release exists, so the notice needs no opening. Colour
+     is not the only cue: the panel states it in words too. */
+  .update-badge {
+    position: absolute;
+    inset-block-start: -3px;
+    inset-inline-end: -3px;
+    inline-size: 9px;
+    block-size: 9px;
+    border-radius: 50%;
+    background: var(--brand);
+    box-shadow: 0 0 0 2px var(--surface);
+    pointer-events: none;
+  }
+  .update-badge[hidden] { display: none; }
+
+  .update-panel {
+    position: absolute;
+    inset-block-start: calc(100% + var(--space-2));
+    inset-inline-end: 0;
+    z-index: 20;
+    inline-size: min(22rem, calc(100vw - 2 * var(--space-4)));
+    padding: var(--space-4);
+    background: var(--surface-raised);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md, 12px);
+    box-shadow: var(--shadow-2, var(--shadow-1));
+  }
+  .update-panel[hidden] { display: none; }
+
   .update-title {
     margin: 0 0 var(--space-2);
     font-size: var(--text-sm);
@@ -1369,6 +1418,7 @@
     .btn-icon-only, .settings-close { inline-size: 2.75rem; block-size: 2.75rem; }
     .setting-opt, .settings-reset { min-block-size: 2.75rem; }
     .update-check, .update-download { min-block-size: 2.75rem; }
+    .update-btn { min-block-size: 2.75rem; }
     /* The project expander is the only way into a merged project row, and it
        was left at its 32px desktop size while every other control grew to
        44px on touch. 2.75rem = 44px at the default root size. */

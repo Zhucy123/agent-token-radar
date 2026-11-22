@@ -219,7 +219,7 @@ English.
 
 ```bash
 # tests (PYTHONPATH must point at tests/)
-PYTHONPATH=tests python -m unittest discover -s tests -p 'test_*.py'   # 255 tests
+PYTHONPATH=tests python -m unittest discover -s tests -p 'test_*.py'   # 271 tests
 
 # scan smoke test
 python -m agent_token_radar scan
@@ -253,12 +253,14 @@ repeated scan upserts instead of double-counting.
   seven text colours and four outline widths. Changes apply immediately, survive
   a reload, and the first paint already uses the chosen size instead of flashing
   the default first.
-- **Update check**: the bottom of the settings dialog shows your version and
-  whether a newer one exists, with a direct download link. It runs once in the
-  background at startup and caches the answer for 24 hours (at most one request a
-  day), reading only a version tag and sending nothing about you. Offline or with
-  GitHub unreachable it quietly says it could not check, and nothing else is
-  affected. Set `AGENT_TOKEN_RADAR_NO_UPDATE_CHECK=1` to turn it off entirely.
+- **Update check**: the toolbar shows your running version (for example
+  `v0.0.2`); open it to see whether a newer one exists, with a direct download
+  link. When an update is available the button takes the accent colour and shows
+  a dot, so you know without opening anything. It runs once in the background at
+  startup and caches the answer for 24 hours (at most one request a day), reading
+  only a version tag and sending nothing about you. Offline or with GitHub
+  unreachable it quietly says it could not check, and nothing else is affected.
+  Set `AGENT_TOKEN_RADAR_NO_UPDATE_CHECK=1` to turn it off entirely.
 
 **Fixed**
 

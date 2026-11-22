@@ -2393,11 +2393,28 @@
     }
     $("updateCheck").textContent =
       status.state === "unknown" ? t("update.check") : t("update.recheck");
+
+    // Surface "an update exists" on the toolbar button itself, so the notice is
+    // visible without opening the panel. The button also carries the running
+    // version, which is the answer when everything is current.
+    const badge = $("updateBadge");
+    const toggle = $("updateBtn");
+    const versionEl = $("updateVersion");
+    const available = status.state === "update_available";
+    if (versionEl && v) versionEl.textContent = `v${String(v).replace(/^v/i, "")}`;
+    if (badge) badge.hidden = !available;
+    if (toggle) {
+      if (available) toggle.dataset.update = "available";
+      else delete toggle.dataset.update;
+    }
   }
 
   function initUpdateBox() {
     const btn = $("updateCheck");
-    if (!btn) return;
+    const toggle = $("updateBtn");
+    const panel = $("updatePanel");
+    const badge = $("updateBadge");
+    if (!btn || !toggle || !panel) return;
 
     // The server is the authority on the running version (it reports it in
     // every /api/update response), so this module never hard-codes one.
@@ -2418,10 +2435,44 @@
       }
     };
 
+    const setOpen = (open) => {
+      panel.hidden = !open;
+      toggle.setAttribute("aria-expanded", open ? "true" : "false");
+      // Close on Escape and on a click outside, the way a popover is expected
+      // to behave. Not a <dialog>: nothing here should trap focus or dim the
+      // page for a version number.
+      if (open) {
+        document.addEventListener("keydown", onKey, true);
+        document.addEventListener("pointerdown", onOutside, true);
+      } else {
+        document.removeEventListener("keydown", onKey, true);
+        document.removeEventListener("pointerdown", onOutside, true);
+      }
+    };
+    const onKey = (ev) => {
+      if (ev.key === "Escape") {
+        setOpen(false);
+        toggle.focus();
+      }
+    };
+    const onOutside = (ev) => {
+      if (!panel.contains(ev.target) && !toggle.contains(ev.target)) {
+        setOpen(false);
+      }
+    };
+
+    toggle.addEventListener("click", () => {
+      const willOpen = panel.hidden;
+      setOpen(willOpen);
+      // Opening is what asks. Reading the cache is cheap and unforced, so this
+      // never turns into a network request more than once a day.
+      if (willOpen) ask(false);
+    });
+
     btn.addEventListener("click", () => ask(true));
-    // First open reads the cache the startup check (usually) already filled.
-    // Deliberately not forced: that would turn every Settings open into a
-    // network request, which is exactly what the daily cache prevents.
+
+    // Warm the badge from the cache the startup check filled. Deliberately not
+    // forced: that would make every page load a network request.
     ask(false);
   }
 
