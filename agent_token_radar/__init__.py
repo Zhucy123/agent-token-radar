@@ -30,7 +30,7 @@ from .paths import default_db_path
 from .scanner import Scanner
 from .store import Store
 
-__version__ = "0.0.2"
+__version__ = "0.0.3"
 
 __all__ = [
     "BaseAdapter",

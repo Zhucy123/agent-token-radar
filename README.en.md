@@ -240,6 +240,25 @@ repeated scan upserts instead of double-counting.
 
 ## Changelog
 
+### 0.0.3
+
+**Added**
+
+- **Update check**: the toolbar shows your running version (for example
+  `v0.0.3`); open it to see whether a newer one exists, with a direct download
+  link. When an update is available the button takes the accent colour and shows
+  a dot, so you know without opening anything. It runs once in the background at
+  startup and caches the answer for 24 hours (at most one request a day), reading
+  only a version tag and sending nothing about you.
+
+**Note**
+
+- This is the project's **only network access**. The earlier "no network
+  requests" claim no longer holds, and the README and DESIGN text has been
+  corrected accordingly.
+- Set `AGENT_TOKEN_RADAR_NO_UPDATE_CHECK=1` to turn it off completely: no check
+  at startup and none when you open the panel, so not a single request is made.
+
 ### 0.0.2
 
 **Added**
@@ -253,14 +272,6 @@ repeated scan upserts instead of double-counting.
   seven text colours and four outline widths. Changes apply immediately, survive
   a reload, and the first paint already uses the chosen size instead of flashing
   the default first.
-- **Update check**: the toolbar shows your running version (for example
-  `v0.0.2`); open it to see whether a newer one exists, with a direct download
-  link. When an update is available the button takes the accent colour and shows
-  a dot, so you know without opening anything. It runs once in the background at
-  startup and caches the answer for 24 hours (at most one request a day), reading
-  only a version tag and sending nothing about you. Offline or with GitHub
-  unreachable it quietly says it could not check, and nothing else is affected.
-  Set `AGENT_TOKEN_RADAR_NO_UPDATE_CHECK=1` to turn it off entirely.
 
 **Fixed**
 
