@@ -453,6 +453,42 @@
     outline: 2px solid var(--brand);
     outline-offset: 2px;
   }
+  /* Dropdown for a long option list (19 typefaces). A native <select> keeps the
+     OS popup, type-ahead, keyboard support and scrolling for free; the only thing
+     styled here is the closed control, so it matches the segmented row. */
+  .setting-select { display: flex; }
+  .setting-dropdown {
+    /* Fill the row so the hit target is the whole width, not just the text. */
+    flex: 1 1 auto;
+    min-block-size: 2.75rem;      /* 44px touch target */
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--hairline);
+    border-radius: 10px;
+    background: var(--surface-sunken);
+    color: var(--text);
+    font: inherit;
+    font-size: var(--text-sm);
+    cursor: pointer;
+    /* Chromium paints its own arrow; this keeps it coloured with the theme on
+       the dark palette too. */
+    accent-color: var(--brand);
+  }
+  .setting-dropdown:hover { background: var(--surface-raised); }
+  .setting-dropdown:focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
+  }
+  /* The open popup belongs to the OS and cannot be styled beyond this, but the
+     options carry their own font-family inline so each name previews its face. */
+  .setting-dropdown option {
+    background: var(--surface-raised);
+    color: var(--text);
+    font-size: var(--text-md);
+  }
+  .setting-dropdown optgroup {
+    color: var(--muted);
+    font-weight: 600;
+  }
   .settings-foot {
     display: flex;
     justify-content: flex-end;

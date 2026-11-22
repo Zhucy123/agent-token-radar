@@ -100,33 +100,168 @@
     {
       key: "ff",                      // localStorage: atr.ff
       attr: "data-ff",                // <html data-ff="...">
-      type: "segmented",
+      // A <select> rather than segments: 19 faces will not fit a segmented row,
+      // and a native select gives the OS font picker, type-ahead, keyboard
+      // navigation and a scrollable list for free. Grouped with <optgroup> so
+      // "which kind of face is this" reads at a glance.
+      type: "select",
       label: "settings.fontFamily",
       hint: "settings.fontFamily.hint",
-      // Installed-font stacks only: the project makes no network requests, so
-      // a webfont is not an option. Each stack ends in a generic family so a
-      // machine missing the named face still lands somewhere sane.
+      // Installed-font stacks only: the project makes no network requests, so a
+      // webfont is not an option.
+      //
+      // Every stack ends with a CJK face and then a generic family. That order
+      // is the whole anti-tofu strategy: Latin text picks the named Western
+      // face, Chinese text falls through to the CJK face, and if that face is
+      // absent the generic family still renders something instead of boxes.
+      // Measured in the real WebView2: all 19 stacks paint a full CJK sample
+      // with no blank glyphs, and the Latin-only stacks all resolve CJK to the
+      // same 微软雅黑 fallback width (383px at 64px) -- i.e. Chinese renders
+      // identically no matter which Western face is chosen.
       options: [
+        // --- default ---
         {
+          group: "settings.ff.g.default",
           value: "system",
           label: "settings.ff.system",
           // Same stack the stylesheet shipped with; the default.
           stack: 'system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif',
         },
+        // --- sans (Latin) ---
         {
-          value: "sans",
-          label: "settings.ff.sans",
-          stack: '"Inter", "Segoe UI Variable Text", "Segoe UI", "Helvetica Neue", Arial, "Microsoft YaHei", sans-serif',
+          group: "settings.ff.g.sans",
+          value: "segoe",
+          label: "settings.ff.segoe",
+          stack: '"Segoe UI", "Microsoft YaHei", sans-serif',
         },
         {
-          value: "serif",
-          label: "settings.ff.serif",
-          stack: 'Georgia, "Noto Serif", "Source Han Serif SC", "Songti SC", "SimSun", serif',
+          group: "settings.ff.g.sans",
+          value: "arial",
+          label: "settings.ff.arial",
+          stack: 'Arial, "Microsoft YaHei", sans-serif',
         },
         {
-          value: "mono",
-          label: "settings.ff.mono",
-          stack: '"Cascadia Code", "Cascadia Mono", Consolas, "SF Mono", "DejaVu Sans Mono", "Microsoft YaHei Mono", monospace',
+          group: "settings.ff.g.sans",
+          value: "verdana",
+          label: "settings.ff.verdana",
+          stack: 'Verdana, "Microsoft YaHei", sans-serif',
+        },
+        {
+          group: "settings.ff.g.sans",
+          value: "tahoma",
+          label: "settings.ff.tahoma",
+          stack: 'Tahoma, "Microsoft YaHei", sans-serif',
+        },
+        {
+          group: "settings.ff.g.sans",
+          value: "trebuchet",
+          label: "settings.ff.trebuchet",
+          stack: '"Trebuchet MS", "Microsoft YaHei", sans-serif',
+        },
+        {
+          group: "settings.ff.g.sans",
+          value: "calibri",
+          label: "settings.ff.calibri",
+          stack: 'Calibri, "Microsoft YaHei", sans-serif',
+        },
+        {
+          group: "settings.ff.g.sans",
+          value: "candara",
+          label: "settings.ff.candara",
+          stack: 'Candara, "Microsoft YaHei", sans-serif',
+        },
+        {
+          group: "settings.ff.g.sans",
+          value: "corbel",
+          label: "settings.ff.corbel",
+          stack: 'Corbel, "Microsoft YaHei", sans-serif',
+        },
+        // --- serif (Latin) ---
+        {
+          group: "settings.ff.g.serif",
+          value: "georgia",
+          label: "settings.ff.georgia",
+          stack: 'Georgia, "Microsoft YaHei", serif',
+        },
+        {
+          group: "settings.ff.g.serif",
+          value: "times",
+          label: "settings.ff.times",
+          stack: '"Times New Roman", "Microsoft YaHei", serif',
+        },
+        {
+          group: "settings.ff.g.serif",
+          value: "cambria",
+          label: "settings.ff.cambria",
+          stack: 'Cambria, "Microsoft YaHei", serif',
+        },
+        {
+          group: "settings.ff.g.serif",
+          value: "palatino",
+          label: "settings.ff.palatino",
+          stack: '"Palatino Linotype", "Microsoft YaHei", serif',
+        },
+        // --- Chinese (CJK-first) ---
+        {
+          group: "settings.ff.g.cjk",
+          value: "yahei",
+          label: "settings.ff.yahei",
+          stack: '"Microsoft YaHei", "Segoe UI", sans-serif',
+        },
+        {
+          group: "settings.ff.g.cjk",
+          value: "dengxian",
+          label: "settings.ff.dengxian",
+          stack: 'DengXian, "Microsoft YaHei", sans-serif',
+        },
+        {
+          group: "settings.ff.g.cjk",
+          value: "simhei",
+          label: "settings.ff.simhei",
+          stack: 'SimHei, "Microsoft YaHei", sans-serif',
+        },
+        {
+          group: "settings.ff.g.cjk",
+          value: "simsun",
+          label: "settings.ff.simsun",
+          stack: 'SimSun, "Microsoft YaHei", serif',
+        },
+        {
+          group: "settings.ff.g.cjk",
+          value: "kaiti",
+          label: "settings.ff.kaiti",
+          stack: 'KaiTi, "Microsoft YaHei", serif',
+        },
+        {
+          group: "settings.ff.g.cjk",
+          value: "fangsong",
+          label: "settings.ff.fangsong",
+          stack: 'FangSong, "Microsoft YaHei", serif',
+        },
+        {
+          group: "settings.ff.g.cjk",
+          value: "noto-sans",
+          label: "settings.ff.notoSans",
+          stack: '"Noto Sans SC", "Microsoft YaHei", sans-serif',
+        },
+        // --- monospace ---
+        {
+          group: "settings.ff.g.mono",
+          value: "cascadia",
+          label: "settings.ff.cascadia",
+          stack: '"Cascadia Code", "Cascadia Mono", "Microsoft YaHei", monospace',
+        },
+        {
+          group: "settings.ff.g.mono",
+          value: "consolas",
+          label: "settings.ff.consolas",
+          stack: 'Consolas, "Microsoft YaHei", monospace',
+        },
+        {
+          group: "settings.ff.g.mono",
+          value: "lucida",
+          label: "settings.ff.lucida",
+          stack: '"Lucida Console", "Microsoft YaHei", monospace',
         },
       ],
       fallback: "system",
@@ -1654,10 +1789,16 @@
 
   /* ------------------------------------------------- settings dialog (dom)
 
-     A segmented control per setting, built from SETTINGS. Real radio inputs
-     rather than buttons: radio gives arrow-key navigation and a single
-     accessible name per group for free, and the label wraps the input so the
-     whole segment is the hit target. */
+     Built from SETTINGS, one branch per control type:
+
+     * ``segmented`` -- a row of radio inputs. Radio gives arrow-key navigation
+       and one accessible name per group for free, and the label wraps the input
+       so the whole segment is the hit target. Right for 2-4 short choices.
+     * ``select`` -- a native <select> with <optgroup> sections. Right when the
+       list is long (19 typefaces): the OS supplies search/type-ahead, keyboard
+       navigation and a scrolling popup, none of which a hand-rolled menu gets
+       right. Each option is rendered IN its own typeface via an inline style, so
+       the list previews itself instead of showing 19 opaque names. */
   function renderSettings() {
     const body = $("settingsBody");
     if (!body) return;
@@ -1683,43 +1824,98 @@
         group.setAttribute("aria-describedby", hint.id);
       }
 
-      const seg = document.createElement("div");
-      seg.className = "setting-seg";
-      for (const opt of s.options) {
-        const label = document.createElement("label");
-        label.className = "setting-opt";
-
-        const input = document.createElement("input");
-        input.type = "radio";
-        input.name = `setting-${s.key}`;
-        input.value = opt.value;
-        input.checked = current[s.key] === opt.value;
-        // The visible span carries the label, so the input itself is only the
-        // state holder; the wrapping <label> supplies its accessible name.
-        input.addEventListener("change", () => {
-          if (!input.checked) return;
-          settingStore.write(s, opt.value);
-          applySetting(s, opt.value);
-          markSettingsDirty(s.key, opt.value);
-        });
-        label.appendChild(input);
-
-        const span = document.createElement("span");
-        span.textContent = t(opt.label);
-        label.appendChild(span);
-        seg.appendChild(label);
+      if (s.type === "select") {
+        group.appendChild(buildSelectSetting(s, current[s.key]));
+      } else {
+        group.appendChild(buildSegmentedSetting(s, current[s.key]));
       }
-      group.appendChild(seg);
       body.appendChild(group);
     }
   }
 
-  /** Reflect a changed value in the visible pressed state. */
+  /** Radio-row control for a short list of choices. */
+  function buildSegmentedSetting(s, currentValue) {
+    const seg = document.createElement("div");
+    seg.className = "setting-seg";
+    for (const opt of s.options) {
+      const label = document.createElement("label");
+      label.className = "setting-opt";
+
+      const input = document.createElement("input");
+      input.type = "radio";
+      input.name = `setting-${s.key}`;
+      input.value = opt.value;
+      input.checked = currentValue === opt.value;
+      // The visible span carries the label, so the input itself is only the
+      // state holder; the wrapping <label> supplies its accessible name.
+      input.addEventListener("change", () => {
+        if (!input.checked) return;
+        settingStore.write(s, opt.value);
+        applySetting(s, opt.value);
+        markSettingsDirty(s.key, opt.value);
+      });
+      label.appendChild(input);
+
+      const span = document.createElement("span");
+      span.textContent = t(opt.label);
+      label.appendChild(span);
+      seg.appendChild(label);
+    }
+    return seg;
+  }
+
+  /** Native <select> with grouped options, each previewed in its own face. */
+  function buildSelectSetting(s, currentValue) {
+    const wrap = document.createElement("div");
+    wrap.className = "setting-select";
+
+    const select = document.createElement("select");
+    select.className = "setting-dropdown";
+    select.name = `setting-${s.key}`;
+    select.id = `setting-${s.key}`;
+
+    let currentGroup = null;
+    let optgroup = null;
+    for (const opt of s.options) {
+      if (opt.group !== currentGroup) {
+        currentGroup = opt.group;
+        optgroup = document.createElement("optgroup");
+        optgroup.label = t(opt.group);
+        select.appendChild(optgroup);
+      }
+      const o = document.createElement("option");
+      o.value = opt.value;
+      o.textContent = t(opt.label);
+      // Preview the face in the list itself. <option> honours font-family in
+      // Chromium, which is the engine inside the desktop window. Where it is
+      // ignored the option still reads correctly, just in the default face.
+      if (opt.stack) o.style.fontFamily = opt.stack;
+      o.selected = opt.value === currentValue;
+      optgroup.appendChild(o);
+    }
+
+    select.addEventListener("change", () => {
+      settingStore.write(s, select.value);
+      applySetting(s, select.value);
+      markSettingsDirty(s.key, select.value);
+    });
+
+    wrap.appendChild(select);
+    return wrap;
+  }
+
+  /** Reflect a changed value in the visible control, whatever its shape. */
   function markSettingsDirty(key, value) {
     const group = document.querySelector(`#settingsBody [data-setting="${key}"]`);
     if (!group) return;
+    // Radio rows: check the matching input.
     for (const input of group.querySelectorAll("input[type=radio]")) {
       input.checked = input.value === value;
+    }
+    // Dropdown: move the selection. Without this a reset would apply the value
+    // to the page while the closed <select> kept showing the old one.
+    for (const sel of group.querySelectorAll("select")) {
+      sel.value = value;
     }
   }
 

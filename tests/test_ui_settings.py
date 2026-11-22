@@ -35,6 +35,21 @@ APP_JS = ROOT / "agent_token_radar" / "static" / "app.js"
 INDEX_HTML = ROOT / "agent_token_radar" / "static" / "index.html"
 NODE = shutil.which("node")
 
+#: Typeface names that ARE the same word in both languages: a font called
+#: "Arial" is "Arial" in Chinese too. Exempt from the zh != en label rule --
+#: but only these, and only because the name carries no translatable text.
+#: Anything with a parenthetical description is NOT listed here, so a real
+#: sentence leaking untranslated still fails.
+_PROPER_NOUN_KEYS = {
+    "settings.ff.arial",
+    "settings.ff.times",
+    "settings.ff.simhei",
+    "settings.ff.simsun",
+    "settings.ff.kaiti",
+    "settings.ff.fangsong",
+    "settings.ff.notoSans",
+}
+
 
 def _js() -> str:
     return APP_JS.read_text(encoding="utf-8")
@@ -260,7 +275,13 @@ const s = SETTINGS.find(x => x.key === "ff");
 console.log(JSON.stringify(s.options.map(o => ({v: o.value, stack: o.stack}))));
 """)
         values = [o["v"] for o in got]
-        self.assertEqual(values, ["system", "sans", "serif", "mono"])
+        # The list grew deliberately; spot-check the shape rather than pinning
+        # every value, so adding a face does not require editing this test.
+        for required in ("system", "segoe", "georgia", "yahei", "simsun",
+                         "kaiti", "cascadia"):
+            self.assertIn(required, values)
+        self.assertGreaterEqual(len(values), 20, "expected a broad typeface list")
+        self.assertEqual(len(values), len(set(values)), "duplicate option value")
         for opt in got:
             stack = opt["stack"]
             self.assertTrue(
@@ -269,6 +290,44 @@ console.log(JSON.stringify(s.options.map(o => ({v: o.value, stack: o.stack}))));
             # No webfonts: the project makes no network requests.
             self.assertNotIn("url(", stack)
             self.assertNotIn("http", stack)
+            # Anti-tofu: every stack names a CJK-capable face before the generic,
+            # so Chinese cannot fall through to whatever the browser picks.
+            self.assertTrue(
+                any(cjk in stack for cjk in
+                    ("YaHei", "SimSun", "SimHei", "KaiTi", "FangSong",
+                     "DengXian", "Noto Sans SC")),
+                f"{opt['v']} has no CJK fallback: {stack}")
+
+    def test_every_typeface_declares_a_group(self) -> None:
+        """The dropdown is grouped; an option with no group would land in the
+        previous <optgroup> and appear under the wrong heading."""
+        got = self._run("""
+const s = SETTINGS.find(x => x.key === "ff");
+console.log(JSON.stringify(s.options.map(o => ({v: o.value, g: o.group || null}))));
+""")
+        missing = [o["v"] for o in got if not o["g"]]
+        self.assertEqual(missing, [], "options without a group")
+
+    def test_typeface_groups_are_all_translated(self) -> None:
+        from agent_token_radar.i18n import STRINGS
+
+        got = self._run("""
+const s = SETTINGS.find(x => x.key === "ff");
+console.log(JSON.stringify([...new Set(s.options.map(o => o.group))]));
+""")
+        for lang, table in STRINGS.items():
+            for key in got:
+                self.assertIn(key, table, f"missing {key} in {lang}")
+
+    def test_typeface_uses_a_dropdown_control(self) -> None:
+        """19 faces cannot be a segmented row; the config must ask for a select."""
+        got = self._run("""
+const s = SETTINGS.find(x => x.key === "ff");
+console.log(JSON.stringify({type: s.type, count: s.options.length}));
+""")
+        self.assertEqual(got["type"], "select")
+        self.assertGreater(got["count"], 8,
+                           "a long list must select, not segment")
 
     def test_typeface_apply_writes_the_font_token(self) -> None:
         got = self._run("""
@@ -282,8 +341,8 @@ console.log(JSON.stringify(out));
 """)
         for value, token in got.items():
             self.assertTrue(token, f"{value} did not write --font-ui")
-        self.assertIn("monospace", got["mono"])
-        self.assertIn("Georgia", got["serif"])
+        self.assertIn("monospace", got["cascadia"])
+        self.assertIn("Georgia", got["georgia"])
 
     def test_applying_a_setting_redraws_the_chart(self) -> None:
         """Run the shipped applySetting body, not a copy of it."""
@@ -338,8 +397,25 @@ class SettingsTranslationTests(unittest.TestCase):
             for lang in ("zh", "en"):
                 self.assertIn(key, STRINGS[lang],
                               f"{key} missing from {lang}")
+            # A typeface NAME is a proper noun and is allowed to be identical in
+            # both languages ("Arial" is "Arial"). What must differ is anything
+            # carrying an explanation -- a bare name has no translatable text.
+            if key in _PROPER_NOUN_KEYS:
+                continue
             self.assertNotEqual(STRINGS["zh"][key], STRINGS["en"][key],
                                 f"{key} is identical in both languages")
+
+    def test_proper_noun_labels_are_still_present_in_both(self) -> None:
+        """The exemption above must not become a place to hide a missing key."""
+        import sys
+        sys.path.insert(0, str(ROOT))
+        from agent_token_radar.i18n import STRINGS
+
+        for key in _PROPER_NOUN_KEYS:
+            for lang in ("zh", "en"):
+                self.assertIn(key, STRINGS[lang], f"{key} missing from {lang}")
+                self.assertTrue(STRINGS[lang][key].strip(),
+                                f"{key} is blank in {lang}")
 
     def test_chinese_labels_have_no_latin_sentences(self) -> None:
         import sys
@@ -348,7 +424,16 @@ class SettingsTranslationTests(unittest.TestCase):
 
         # Only proper nouns may stay Latin; a run of 4+ Latin letters in a
         # Chinese string means a sentence leaked through untranslated.
-        allowed = {"Agent", "Model", "Provider", "Session", "Token", "token"}
+        #
+        # Font family names are proper nouns by definition: "Segoe UI" is not
+        # translated into Chinese, it is written in Latin because that is its
+        # name. They are allowed here as single words; a phrase like "Windows
+        # interface font" is not, which is why that was reworded to 系统界面字体.
+        allowed = {"Agent", "Model", "Provider", "Session", "Token", "token",
+                   "Segoe", "Arial", "Verdana", "Tahoma", "Trebuchet", "Calibri",
+                   "Candara", "Corbel", "Georgia", "Times", "Roman", "Cambria",
+                   "Palatino", "Linotype", "Noto", "Sans", "Cascadia", "Code",
+                   "Consolas", "Lucida", "Console"}
         for key, value in STRINGS["zh"].items():
             if not key.startswith(("settings.", "toolbar.")):
                 continue

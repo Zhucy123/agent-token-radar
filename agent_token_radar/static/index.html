@@ -21,11 +21,35 @@
   // fontSize: percentage of the stylesheet's design size.
   var FS = { small: 90, normal: 100, large: 115, xlarge: 130 };
   // Typeface stacks, installed fonts only (the app makes no network requests).
+  /* MUST mirror SETTINGS in app.js. This copy exists only so the chosen
+     typeface is on screen before the deferred bundle runs -- without it the
+     first paint uses the stylesheet default and the page visibly re-flows when
+     app.js lands. test_ui_settings.test_bootstrap_matches_the_js_table fails if
+     the two ever disagree, so this cannot silently rot. */
   var FF = {
     system: 'system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif',
-    sans: '"Inter", "Segoe UI Variable Text", "Segoe UI", "Helvetica Neue", Arial, "Microsoft YaHei", sans-serif',
-    serif: 'Georgia, "Noto Serif", "Source Han Serif SC", "Songti SC", "SimSun", serif',
-    mono: '"Cascadia Code", "Cascadia Mono", Consolas, "SF Mono", "DejaVu Sans Mono", "Microsoft YaHei Mono", monospace'
+    segoe: '"Segoe UI", "Microsoft YaHei", sans-serif',
+    arial: 'Arial, "Microsoft YaHei", sans-serif',
+    verdana: 'Verdana, "Microsoft YaHei", sans-serif',
+    tahoma: 'Tahoma, "Microsoft YaHei", sans-serif',
+    trebuchet: '"Trebuchet MS", "Microsoft YaHei", sans-serif',
+    calibri: 'Calibri, "Microsoft YaHei", sans-serif',
+    candara: 'Candara, "Microsoft YaHei", sans-serif',
+    corbel: 'Corbel, "Microsoft YaHei", sans-serif',
+    georgia: 'Georgia, "Microsoft YaHei", serif',
+    times: '"Times New Roman", "Microsoft YaHei", serif',
+    cambria: 'Cambria, "Microsoft YaHei", serif',
+    palatino: '"Palatino Linotype", "Microsoft YaHei", serif',
+    yahei: '"Microsoft YaHei", "Segoe UI", sans-serif',
+    dengxian: 'DengXian, "Microsoft YaHei", sans-serif',
+    simhei: 'SimHei, "Microsoft YaHei", sans-serif',
+    simsun: 'SimSun, "Microsoft YaHei", serif',
+    kaiti: 'KaiTi, "Microsoft YaHei", serif',
+    fangsong: 'FangSong, "Microsoft YaHei", serif',
+    "noto-sans": '"Noto Sans SC", "Microsoft YaHei", sans-serif',
+    cascadia: '"Cascadia Code", "Cascadia Mono", "Microsoft YaHei", monospace',
+    consolas: 'Consolas, "Microsoft YaHei", monospace',
+    lucida: '"Lucida Console", "Microsoft YaHei", monospace'
   };
   try {
     var fs = localStorage.getItem("atr.fs");
