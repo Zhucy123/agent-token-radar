@@ -257,8 +257,11 @@ repeated scan upserts instead of double-counting.
 **Fixed**
 
 - **Cached input billed twice**: for agents that fold cache reads into their
-  input count (Codex, WorkBuddy), the cached part was charged twice. The total
-  went from $1875.84 to $374.47; Codex alone from $1532.53 to $120.38.
+  input count (Codex, WorkBuddy), the cached part was charged twice. Measured at
+  the moment of the fix, the total went from $1875.84 to $374.47 and Codex alone
+  from $1532.53 to $120.38. **Those are snapshots of that moment**; the figures
+  keep moving as this machine logs more usage, so trust what your own install
+  shows.
 - **Highlight jumped ahead after a jump**: clicking a section highlighted the one
   below it, because the scroll spy treated the callback's changed-entries batch
   as the full set of visible sections.
