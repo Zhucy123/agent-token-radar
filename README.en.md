@@ -12,6 +12,7 @@ database, and serves it through a CLI report and a local web dashboard.
 <p>
 <a href="#install"><b>↓ Install</b></a> ·
 <a href="#usage"><b>↓ Usage</b></a> ·
+<a href="#changelog"><b>↓ Changelog</b></a> ·
 <a href="#what-this-is-based-on"><b>↓ What this is based on</b></a> ·
 <a href="#scope-and-limits"><b>↓ Scope and limits</b></a>
 </p>
@@ -234,6 +235,48 @@ Drop a `.py` file containing `class XxxAdapter(BaseAdapter)` into `adapters/` an
 it is **registered automatically** — there is no central list to edit. Implement
 `name`, `detect()` and `scan(checkpoint)`, and keep `event_key` stable so a
 repeated scan upserts instead of double-counting.
+
+---
+
+## Changelog
+
+### 0.0.2
+
+**Added**
+
+- **Section jump bar**: six buttons across the top (Summary / Trend / By Agent /
+  Agent / Model / By project / Top Sessions) that jump straight to that section.
+  The current section highlights as you scroll, and the row still lines up when
+  it wraps to two lines on narrow windows.
+- **Text settings dialog** (gear icon, top right): four text sizes, 23 typefaces
+  grouped into sans / serif / Chinese / monospace, four weight levels, italic,
+  seven text colours and four outline widths. Changes apply immediately, survive
+  a reload, and the first paint already uses the chosen size instead of flashing
+  the default first.
+
+**Fixed**
+
+- **Cached input billed twice**: for agents that fold cache reads into their
+  input count (Codex, WorkBuddy), the cached part was charged twice. The total
+  went from $1875.84 to $374.47; Codex alone from $1532.53 to $120.38.
+- **Highlight jumped ahead after a jump**: clicking a section highlighted the one
+  below it, because the scroll spy treated the callback's changed-entries batch
+  as the full set of visible sections.
+- **English left in Chinese mode**: the "Top Session" jump label, the status
+  dot's hover tooltip and the language switch's accessible name all stayed
+  English; they now follow the selected language.
+- **Chinese in monospace cells**: project names and session titles had no CJK
+  fallback in their font stack, so Chinese fell back to the system face and
+  looked different from the rest of the page. All 23 typeface options and the
+  chart canvas were checked too.
+- **Jump landing gap**: at larger text sizes the gap between the sticky bars and
+  the jumped-to heading no longer matched the intended spacing.
+
+### 0.0.1
+
+First release: 25 agent adapters, a CLI, a single-page web dashboard, Chinese and
+English, official brand icons, reference cost estimates from published prices,
+and a Windows installer.
 
 ---
 
