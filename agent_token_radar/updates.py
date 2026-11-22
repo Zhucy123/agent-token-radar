@@ -233,5 +233,43 @@ def check_for_update(
         "checked_at": stamp,
         "cached": False,
     }
+    # The download links let the app update itself instead of sending the user
+    # to a browser page. Picked by asset name so a release that also ships, say,
+    # a zip of the source cannot be mistaken for the installer.
+    payload.update(_asset_links(data.get("assets"), latest))
     _write_cache(payload)
     return payload
+
+
+#: The installer is published under this exact name by agent-token-radar.iss
+#: (OutputBaseFilename). Matching on it is how the app finds its own updater.
+INSTALLER_ASSET_NAME = "AgentTokenRadar-Setup.exe"
+
+
+def _asset_links(assets: Any, tag: str) -> dict[str, str]:
+    """Pick the installer and the source archive out of a release's assets.
+
+    Both are optional: a release without an installer (a source-only tag) must
+    still produce a usable answer, so a missing entry simply omits its key
+    rather than failing the whole check.
+    """
+    out: dict[str, str] = {}
+    for asset in assets or []:
+        if not isinstance(asset, dict):
+            continue
+        name = str(asset.get("name") or "")
+        link = str(asset.get("browser_download_url") or "")
+        if not link:
+            continue
+        if name == INSTALLER_ASSET_NAME:
+            out["installer_url"] = link
+            out["installer_size"] = asset.get("size")
+        elif name in ("source.zip", "source.tar.gz"):
+            out["source_url"] = link
+    # GitHub always exposes a source archive for a tag even without an asset.
+    if "source_url" not in out:
+        out["source_url"] = (
+            "https://github.com/Zhucy123/agent-token-radar/archive/"
+            f"refs/tags/{tag}.zip"
+        )
+    return out

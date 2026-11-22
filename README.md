@@ -188,7 +188,7 @@ agent-token-radar desktop                       # 原生桌面窗口
 
 ```bash
 # 测试（需要 PYTHONPATH 指向 tests）
-PYTHONPATH=tests python -m unittest discover -s tests -p 'test_*.py'   # 271 个测试
+PYTHONPATH=tests python -m unittest discover -s tests -p 'test_*.py'   # 293 个测试
 
 # 扫描冒烟
 python -m agent_token_radar scan
@@ -211,7 +211,8 @@ ISCC.exe agent-token-radar.iss                                  # -> dist-instal
 
 **新增**
 
-- **版本更新检查**：顶部工具栏显示当前版本号（如 `v0.0.3`），点开可看是否有新版，并可直接「前往下载」；有新版本时按钮会亮起并带一个小圆点，不用点开就知道。启动时在后台查一次，结果缓存 24 小时（一天最多一个请求），只读取版本标签、不上传任何数据、不含机器标识。断网或 GitHub 不通时安静显示「暂时无法检查」，不影响使用。
+- **版本更新检查**：顶部工具栏显示当前版本号（如 `v0.0.3`），点开可看是否有新版；有新版本时按钮会亮起并带一个小圆点，不用点开就知道。启动时在后台查一次，结果缓存 24 小时（一天最多一个请求），只读取版本标签、不上传任何数据、不含机器标识。断网或 GitHub 不通时安静显示「暂时无法检查」，不影响使用。
+- **一键更新**（安装版）：点「立即更新」后自动下载安装包 → 校验大小与来源 → 拉起安装程序 → 装完自动删除安装包并重新打开应用。**Windows 会弹一次权限确认框，这一步无法省略**（安装程序要写入 Program Files），界面在点击前就会说明。从源码运行时不走这条路，用 `git pull` 更新。
 
 **说明**
 

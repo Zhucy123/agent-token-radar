@@ -129,13 +129,23 @@ class UpdateControlTests(unittest.TestCase):
         """
         js = _js()
         start = js.index("function initUpdateBox")
-        block = js[start:start + 3000]
+        # To the end of the function, not a fixed character count: the function
+        # grew when the in-app update was added, and a fixed slice silently
+        # started testing a prefix of it.
+        end = js.index("\n  /* ---", start)
+        block = js[start:end]
         self.assertIn("ask(false)", block,
                       "opening must read the cache, not force a request")
         self.assertIn("ask(true)", block,
                       "the explicit button is what forces a fresh check")
-        self.assertNotRegex(block, r"ask\(true\)\s*;?\s*\n\s*//[^\n]*warm",
-                            "the initial call must not force")
+        # The unforced call is the one made when the panel opens; forcing there
+        # would turn every page load into a request.
+        open_handler = block[block.index('toggle.addEventListener("click"'):]
+        open_handler = open_handler[:open_handler.index("});")]
+        self.assertIn("ask(false)", open_handler,
+                      "opening the panel must not force a network request")
+        self.assertNotIn("ask(true)", open_handler,
+                         "opening the panel must not force a network request")
 
 
 class UpdateStyleTests(unittest.TestCase):

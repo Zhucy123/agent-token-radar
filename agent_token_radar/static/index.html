@@ -136,9 +136,12 @@
         <p class="update-actions">
           <button type="button" id="updateCheck" class="update-check"
                   data-i18n="update.check">检查更新</button>
+          <button type="button" id="updateApply" class="update-apply" hidden
+                  data-i18n="update.download">立即更新</button>
           <a id="updateDownload" class="update-download" href="#" target="_blank"
-             rel="noopener noreferrer" hidden data-i18n="update.download">前往下载</a>
+             rel="noopener noreferrer" hidden data-i18n="update.downloadManual">手动下载</a>
         </p>
+        <p id="updateApplyHint" class="update-hint" hidden></p>
         <p class="update-privacy" data-i18n="update.privacy">每天最多查询一次 GitHub，只读取最新版本号，不上传任何使用数据。</p>
       </div>
     </div>

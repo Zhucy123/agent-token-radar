@@ -2345,30 +2345,59 @@
   function renderUpdate(status) {
     const line = $("updateStatus");
     const dl = $("updateDownload");
+    const apply = $("updateApply");
+    const hint = $("updateApplyHint");
     const meta = $("updateMeta");
     if (!line) return;
     const v = status.current_version || "";
+
+    // Which affordance to offer depends on how this copy is running. A checkout
+    // updates with git pull; only the packaged build can run an installer.
+    const installed = !!status.installed_build;
+    const canApply = installed && !!status.installer_url;
+
+    const hideActions = () => {
+      if (dl) dl.hidden = true;
+      if (apply) apply.hidden = true;
+      if (hint) hint.hidden = true;
+    };
 
     line.dataset.state = status.state || "unknown";
     switch (status.state) {
       case "checking":
         line.textContent = t("update.checking");
-        dl.hidden = true;
+        hideActions();
         meta.textContent = t("update.current", { version: v });
         break;
       case "update_available":
         line.textContent = t("update.available", {
           latest: status.latest_version, current: v,
         });
-        dl.href = status.latest_url || "#";
-        dl.hidden = false;
+        if (dl) dl.href = status.latest_url || "#";
+        if (canApply) {
+          // One click does the rest; the UAC prompt is the only stop, and the
+          // hint says so before it appears rather than after.
+          if (apply) apply.hidden = false;
+          if (dl) dl.hidden = true;
+          if (hint) {
+            hint.hidden = false;
+            hint.textContent = t("update.uacHint");
+          }
+        } else {
+          if (apply) apply.hidden = true;
+          if (dl) dl.hidden = false;
+          if (hint) {
+            hint.hidden = false;
+            hint.textContent = t("update.sourceHint");
+          }
+        }
         meta.textContent = status.stale
           ? t("update.unavailableHint")
           : t("update.checkedAt", { time: time(Number(status.checked_at) * 1000) });
         break;
       case "up_to_date":
         line.textContent = t("update.upToDate", { version: v });
-        dl.hidden = true;
+        hideActions();
         meta.textContent = status.stale
           ? t("update.unavailableHint")
           : t("update.checkedAt", { time: time(Number(status.checked_at) * 1000) });
@@ -2376,19 +2405,19 @@
       case "unavailable":
         // Never an error dialog: an offline machine is a normal machine.
         line.textContent = t("update.unavailable");
-        dl.hidden = true;
+        hideActions();
         meta.textContent = `${t("update.current", { version: v })} · ${t("update.unavailableHint")}`;
         break;
       case "disabled":
         // The operator switched checking off on purpose; say so instead of
         // implying the network is broken.
         line.textContent = t("update.disabled");
-        dl.hidden = true;
+        hideActions();
         meta.textContent = t("update.current", { version: v });
         break;
       default:
         line.textContent = t("update.never");
-        dl.hidden = true;
+        hideActions();
         meta.textContent = t("update.current", { version: v });
     }
     $("updateCheck").textContent =
@@ -2411,6 +2440,7 @@
 
   function initUpdateBox() {
     const btn = $("updateCheck");
+    const applyBtn = $("updateApply");
     const toggle = $("updateBtn");
     const panel = $("updatePanel");
     const badge = $("updateBadge");
@@ -2419,6 +2449,7 @@
     // The server is the authority on the running version (it reports it in
     // every /api/update response), so this module never hard-codes one.
     let current = "";
+    let lastStatus = null;
 
     const ask = async (force) => {
       renderUpdate({ state: "checking", current_version: current });
@@ -2426,7 +2457,8 @@
       try {
         const r = await api(`/api/update${force ? "?force=true" : ""}`);
         if (r && r.current_version) current = r.current_version;
-        renderUpdate(r || { state: "unavailable", current_version: current });
+        lastStatus = r || { state: "unavailable", current_version: current };
+        renderUpdate(lastStatus);
       } catch {
         // A failed request is the same user-facing situation as no network.
         renderUpdate({ state: "unavailable", current_version: current });
@@ -2434,6 +2466,63 @@
         btn.disabled = false;
       }
     };
+
+    // Poll the download while it runs. The installer replaces this process, so
+    // "launched" is the last state the page will ever see.
+    const watchApply = () => {
+      const line = $("updateStatus");
+      const hint = $("updateApplyHint");
+      const tick = async () => {
+        let s;
+        try {
+          s = await api("/api/update/apply");
+        } catch {
+          return; // the process is being replaced; stop polling quietly
+        }
+        if (!s) return;
+        if (s.phase === "downloading") {
+          if (line) line.textContent = t("update.applying");
+        } else if (s.phase === "launching" || s.phase === "launched") {
+          if (line) line.textContent = t("update.launching");
+          if (hint) {
+            hint.hidden = false;
+            hint.textContent = t("update.uacHint");
+          }
+          return; // the installer owns the rest
+        } else if (s.phase === "failed") {
+          if (line) line.textContent = t("update.applyFailed", { err: s.error || "" });
+          if (applyBtn) applyBtn.disabled = false;
+          return;
+        }
+        setTimeout(tick, 700);
+      };
+      setTimeout(tick, 400);
+    };
+
+    if (applyBtn) {
+      applyBtn.addEventListener("click", async () => {
+        applyBtn.disabled = true;
+        if (lastStatus) {
+          renderUpdate({ ...lastStatus, state: "checking" });
+        }
+        try {
+          const r = await api("/api/update/apply", { method: "POST" });
+          if (!r || !r.ok) {
+            const line = $("updateStatus");
+            if (line) {
+              line.textContent = t("update.applyFailed", {
+                err: (r && r.message) || "",
+              });
+            }
+            applyBtn.disabled = false;
+            return;
+          }
+          watchApply();
+        } catch {
+          applyBtn.disabled = false;
+        }
+      });
+    }
 
     const setOpen = (open) => {
       panel.hidden = !open;

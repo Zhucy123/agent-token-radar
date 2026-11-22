@@ -33,6 +33,7 @@ from .store import Store
 
 from . import __version__
 from . import updates
+from . import updater
 
 logger = logging.getLogger("agent_token_radar.web")
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -237,6 +238,9 @@ def create_app(scan_interval: int = 30) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         state.start()
+        # An installer left over from an interrupted update is dead weight: if
+        # this process is running, the update either finished or was abandoned.
+        updater.sweep_stale_downloads()
         _start_update_check()
         yield
         state.stop()
@@ -320,7 +324,52 @@ def create_app(scan_interval: int = 30) -> FastAPI:
                 "reason": f"disabled by {_NO_UPDATE_ENV}",
                 "cached": False,
             })
-        return JSONResponse(updates.check_for_update(__version__, force=force))
+        status = updates.check_for_update(__version__, force=force)
+        # Tell the page which affordance to offer: only a packaged build can run
+        # an installer, a checkout updates with git pull.
+        payload = dict(status)
+        payload["installed_build"] = updater.is_installed_build()
+        return JSONResponse(payload)
+
+    @app.post("/api/update/apply")
+    def update_apply() -> JSONResponse:
+        """Download the newer installer, run it, and let it replace this app.
+
+        Refused when this is not a packaged build: a checkout updates by pulling
+        source, and silently downloading an installer over somebody's working
+        tree would be the wrong thing to do.
+
+        The elevation prompt that follows is NOT avoidable -- the installer
+        writes to Program Files -- so the UI warns about it up front rather than
+        letting it look like a failure.
+        """
+        if not updater.is_installed_build():
+            return JSONResponse(
+                {"ok": False, "reason": "not_installed",
+                 "message": "当前是从源码运行，请用 git pull 更新"},
+                status_code=409)
+        if _update_check_disabled():
+            return JSONResponse(
+                {"ok": False, "reason": "disabled"}, status_code=409)
+
+        status = updates.check_for_update(__version__)
+        if status.get("state") != "update_available":
+            return JSONResponse(
+                {"ok": False, "reason": "no_update",
+                 "message": "当前已是最新版本"}, status_code=409)
+        url = status.get("installer_url")
+        if not url:
+            return JSONResponse(
+                {"ok": False, "reason": "no_installer",
+                 "message": "该版本没有提供安装包"}, status_code=409)
+
+        state = updater.start_apply(url, expected_size=status.get("installer_size"))
+        return JSONResponse({"ok": True, "apply": state})
+
+    @app.get("/api/update/apply")
+    def update_apply_status() -> JSONResponse:
+        """Progress of an in-flight download, for the panel to poll."""
+        return JSONResponse(updater.apply_state())
 
     if STATIC_DIR.is_dir():
         # StaticFiles sends ETag/Last-Modified but no Cache-Control, so browsers

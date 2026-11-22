@@ -219,7 +219,7 @@ English.
 
 ```bash
 # tests (PYTHONPATH must point at tests/)
-PYTHONPATH=tests python -m unittest discover -s tests -p 'test_*.py'   # 271 tests
+PYTHONPATH=tests python -m unittest discover -s tests -p 'test_*.py'   # 293 tests
 
 # scan smoke test
 python -m agent_token_radar scan
@@ -245,11 +245,16 @@ repeated scan upserts instead of double-counting.
 **Added**
 
 - **Update check**: the toolbar shows your running version (for example
-  `v0.0.3`); open it to see whether a newer one exists, with a direct download
-  link. When an update is available the button takes the accent colour and shows
-  a dot, so you know without opening anything. It runs once in the background at
-  startup and caches the answer for 24 hours (at most one request a day), reading
-  only a version tag and sending nothing about you.
+  `v0.0.3`); open it to see whether a newer one exists. When an update is
+  available the button takes the accent colour and shows a dot, so you know
+  without opening anything. It runs once in the background at startup and caches
+  the answer for 24 hours (at most one request a day), reading only a version tag
+  and sending nothing about you.
+- **One-click update** (installed build): "Update now" downloads the installer,
+  checks its size and origin, runs it, then deletes the download and reopens the
+  app. **Windows shows one permission prompt, and that step cannot be skipped**
+  (the installer writes to Program Files); the panel says so before you click.
+  A source checkout does not take this path — update with `git pull`.
 
 **Note**
 

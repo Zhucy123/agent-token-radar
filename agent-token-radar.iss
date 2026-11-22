@@ -20,7 +20,7 @@
 ; ---------------------------------------------------------------------------
 
 #define AppName        "Agent Token Radar"
-#define AppVersion     "0.0.3"
+#define AppVersion     "0.0.4"
 #define AppPublisher   "agent-token-radar"
 #define AppURL         "https://github.com/Zhucy123/agent-token-radar"
 #define AppExeName     "AgentTokenRadar.exe"
@@ -35,7 +35,7 @@ AppPublisher={#AppPublisher}
 AppPublisherURL={#AppURL}
 AppSupportURL={#AppURL}/issues
 AppUpdatesURL={#AppURL}/releases
-VersionInfoVersion=0.0.3.0
+VersionInfoVersion=0.0.4.0
 VersionInfoDescription=Agent Token Radar Setup
 VersionInfoProductName=Agent Token Radar
 VersionInfoProductVersion={#AppVersion}
