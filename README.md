@@ -3,13 +3,33 @@
 统计本机各个 AI Agent 的 **Token 用量**，并按厂商官方标价给出**参考费用估算**。
 只读扫描本机会话日志 / SQLite，归一化入库，提供 CLI 报表与本地 Web 仪表盘。
 
-![Agent Token Radar 仪表盘](docs/screenshot.png)
+![汇总卡片与消耗趋势](docs/app-zh-1.png)
 
 **只统计 Token，费用只是参考估算。** Token 是**测量值**，费用是**推导值**（Token × 官方标价）。
 界面因此强制把「覆盖率」和金额一起显示：没有公开标价的模型标成「无公开价」，绝不算成 0。
 细节见 [PRICING-NOTES.md](PRICING-NOTES.md)。
 
+> English documentation: [README.en.md](README.en.md)
+
 **25 个 Agent · 中英双语 · 纯本地 · 无网络请求 · 只读**
+
+---
+
+## 界面
+
+以下截图取自**实际安装的 Windows 桌面程序**（不是浏览器）。
+
+按 Model 分布，含每百万 Token 单价与峰谷标注：
+
+![按 Model 分布](docs/app-zh-2.png)
+
+按 Session 分布（会话标题取自各 Agent 自己的记录），下面接着是按项目（工作目录）分布：
+
+![按 Session 与项目分布](docs/app-zh-3.png)
+
+25 个 Agent 的官方图标，以及页脚的数据来源、定价与分时计价说明：
+
+![数据源与官方图标](docs/app-zh-4.png)
 
 ---
 

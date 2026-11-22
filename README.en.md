@@ -1,0 +1,244 @@
+# Agent Token Radar
+
+Measures **token usage** for every AI agent on your machine and turns it into a
+**reference cost estimate** at the vendor's own list prices. It scans each
+agent's session logs / SQLite read-only, normalises everything into one local
+database, and serves it through a CLI report and a local web dashboard.
+
+![Summary cards and usage trend](docs/app-en-1.png)
+
+**Tokens are measured; cost is derived.** A cost is always `tokens × official
+list price`, so it can never be more trustworthy than the price table. The
+dashboard therefore always shows the **coverage ratio** next to any amount, and a
+model with no published price is reported as *unpriced* rather than counted as
+zero. Details in [PRICING-NOTES.md](PRICING-NOTES.md).
+
+> 中文文档见 [README.md](README.md)
+
+**25 agents · Chinese/English · fully local · no network requests · read-only**
+
+---
+
+## The interface
+
+All screenshots below are the **real installed Windows desktop app**, not a
+browser tab.
+
+Usage by Model, with the per-1M unit price and peak/off-peak marking:
+
+![Usage by Model](docs/app-en-2.png)
+
+Usage by Session on top (titles come from each agent's own records), then usage
+by project — the agent's working directory:
+
+![Usage by Session and project](docs/app-en-3.png)
+
+The 25 official agent icons, plus the footer stating where prices come from and
+how time-of-day billing works:
+
+![Data sources and official icons](docs/app-en-4.png)
+
+---
+
+## What it does
+
+- **25 agent adapters** — Claude Code, Codex, DSH, Gemini / Antigravity, Hermes, WorkBuddy, Kimi, Copilot, Qoder, Qwen Code, Pi, Prime, CodeBuddy, Command Code, Devin, MiMoCode, MiniMax, OpenCode, ZCode, Muse and more
+- **Six dimensions** — by Agent / Model / Provider / project (working directory) / Session / day
+- **Cache-hit rate** — aggregated first, then divided; per-row ratios are never averaged (see [DESIGN.md](DESIGN.md))
+- **Reference cost** — from official list prices, including time-of-day billing (DeepSeek peak/off-peak is decided per request from that request's own timestamp)
+- **Strict bilingual UI** — Chinese mode shows Chinese only, English mode English only
+- **Official icons** — all 25 use the vendor's own mark, embedded as SVG, works offline
+- **Desktop build** — a Windows installer needs no Python at all
+
+---
+
+## Install
+
+### Windows desktop build (recommended)
+
+Download **`AgentTokenRadar-Setup.exe`** from
+[Releases](https://github.com/Zhucy123/agent-token-radar/releases) and run it:
+
+- Installs to `C:\Program Files\AgentTokenRadar`; asks for administrator once
+- Creates a Start-menu shortcut; the desktop icon is an optional checkbox
+- Uninstall via *Settings → Apps*; your usage database is **kept**, so reinstalling keeps your history
+- No Python, no terminal — it scans automatically on first launch
+
+> **The install path must be pure ASCII.** The window is pywebview + Edge
+> WebView2, whose .NET runtime resolves native DLL paths as ANSI; a non-ASCII
+> path fails with `Failed to resolve Python.Runtime.Loader.Initialize`. The
+> installer checks for this and refuses a non-ASCII target.
+
+### pip
+
+```bash
+# CLI only — pure standard library, no third-party packages
+pip install "agent-token-radar @ git+https://github.com/Zhucy123/agent-token-radar"
+
+# with the web dashboard (fastapi + uvicorn)
+pip install "agent-token-radar[web] @ git+https://github.com/Zhucy123/agent-token-radar"
+```
+
+Requires Python **3.11+**. DSH's `.zstd` session logs decompress with the
+standard library on 3.14+; on 3.11–3.13 add `pip install zstandard` (or fall
+back to `.jsonl` only).
+
+---
+
+## Usage
+
+```bash
+agent-token-radar scan                          # scan once
+agent-token-radar stats --range 7d --by agent   # terminal report
+agent-token-radar stats --range all --by model  # by model
+agent-token-radar stats --range all --by project
+agent-token-radar serve                         # dashboard at http://127.0.0.1:8770
+agent-token-radar desktop                       # native desktop window
+```
+
+Works from any directory once installed. The database lives at:
+
+| Platform | Path |
+|---|---|
+| Windows | `%LOCALAPPDATA%\agent-token-radar\token_radar.db` |
+| Linux | `~/.local/share/agent-token-radar/token_radar.db` |
+
+Override with `AGENT_TOKEN_RADAR_DB`.
+
+**Ports**: 8770 first, then 8771, 8772… if taken, and it tells you which port it
+used. Add `--no-fallback` to fail instead of moving.
+
+**Language**: `stats --lang en`, the `中文 / EN` toggle in the dashboard, or the
+URL parameter `?lang=en`.
+
+### From source
+
+```bash
+git clone https://github.com/Zhucy123/agent-token-radar
+cd agent-token-radar
+pip install -e ".[web]"          # for the desktop window also: pip install pywebview
+python -m agent_token_radar serve
+```
+
+---
+
+## What this is based on
+
+This is not invented from scratch. Three sources shaped it, and every
+non-obvious decision in the code carries its source.
+
+### [cclank/tokei](https://github.com/cclank/tokei) — agent coverage and parsing rules
+
+| Borrowed | How |
+|---|---|
+| **Agent coverage** | All 25 adapters follow tokei's supported list; agents tokei cannot measure (Cursor, Grok Bot, Doubao Work) were deliberately not added |
+| **Two input conventions** | `Additive` (input excludes cache) vs `Inclusive` (input already contains cache, so subtract); each adapter declares which one it is instead of guessing |
+| **reasoning is a subset of output** | Reported separately, never added into the total |
+| **Copilot counts output only** | The upstream input/cache relationship is unsettled, so it stays blank rather than guessed |
+| **Deduplication keys** | `event_key` uses each agent's natural request id, not a line number |
+| **Official icons** | All 25 vendor marks, none drawn by hand |
+
+**Where this deliberately differs**: when tokei has no price for a model it
+falls back to "same tier, previous version" or a floor price. This tool does
+not — no official price means no cost, so coverage stops at 96.5% instead of
+being padded to 100%. An invented number is worse than an admitted gap.
+
+Per-agent parsing details are in [TOKEI-NOTES.md](TOKEI-NOTES.md).
+
+### [magpie](https://magpie.im) local gateway — session titles and measured providers
+
+On this machine Claude Code and Codex traffic goes through a magpie gateway. Its
+own records are closer to "what actually happened" than any agent log, so they
+are used as a **measurement source**:
+
+| Borrowed | How |
+|---|---|
+| **Where session titles live** | DSH in `ledger.json` under `days.<date>.sessions[]`; WorkBuddy in the `sessions` table of `workbuddy.db` |
+| **Provider measured, not inferred** | Claude Code logs carry no provider field, but its `message.id` is the gateway's `responseId`, so requests pair up one-to-one |
+| **Routing ledger beats export log** | The gateway's `routing/*.jsonl` is a per-request record and outranks the exported log |
+
+**Evidence strength**: 587 matched requests agreed with the gateway's own
+input/output token figures **exactly, 0 mismatches**.
+
+> **magpie is not required.** Without it, provider falls back to *inferred* or
+> blank, and the UI says so explicitly rather than presenting a guess as fact.
+
+Not borrowed: magpie's local install holds no price or cost records, so there
+was no pricing implementation to learn from.
+
+### Vendor pricing pages — the cost estimate
+
+Every price is read by hand from the vendor's official page, with the source URL
+and the date it was read recorded alongside:
+
+| Vendor | Source |
+|---|---|
+| DeepSeek | <https://api-docs.deepseek.com/quick_start/pricing> |
+| OpenAI | <https://developers.openai.com/api/docs/pricing> |
+| Anthropic | <https://platform.claude.com/docs/en/about-claude/pricing> |
+| Kimi | <https://platform.kimi.ai/docs/pricing/chat> |
+| Zhipu | <https://docs.z.ai/guides/overview/pricing> |
+| Qwen | <https://www.alibabacloud.com/help/en/model-studio/qwen3-8-flash> |
+
+All prices are the vendor's own **USD** page; no exchange rate is applied
+anywhere. Repricing is a data edit in `agent_token_radar/pricing.json`, never a
+code change.
+
+---
+
+## Documentation
+
+| File | Contents |
+|---|---|
+| [DESIGN.md](DESIGN.md) | Full technical write-up: how the cache-hit rate is computed, per-agent input semantics, architecture and trade-offs |
+| [PRICING-NOTES.md](PRICING-NOTES.md) | Pricing rules: where prices come from, why unpriced is not zero, how time-of-day billing works |
+| [TOKEI-NOTES.md](TOKEI-NOTES.md) | tokei research and per-agent parsing spec |
+| [BUILD-NOTES.md](BUILD-NOTES.md) | The packaging process and the 14 traps hit along the way |
+| [HANDOFF.md](HANDOFF.md) | Entry point for whoever picks this up next |
+
+The documents above are written in Chinese; the code and its comments are in
+English.
+
+---
+
+## Development
+
+```bash
+# tests (PYTHONPATH must point at tests/)
+PYTHONPATH=tests python -m unittest discover -s tests -p 'test_*.py'   # 139 tests
+
+# scan smoke test
+python -m agent_token_radar scan
+
+# build the Windows installer
+python -m PyInstaller --noconfirm agent-token-radar-dir.spec   # -> dist/AgentTokenRadar/
+ISCC.exe agent-token-radar.iss                                  # -> dist-installer/AgentTokenRadar-Setup.exe
+```
+
+### Adding an agent
+
+Drop a `.py` file containing `class XxxAdapter(BaseAdapter)` into `adapters/` and
+it is **registered automatically** — there is no central list to edit. Implement
+`name`, `detect()` and `scan(checkpoint)`, and keep `event_key` stable so a
+repeated scan upserts instead of double-counting.
+
+---
+
+## Scope and limits
+
+- **Cost is a reference estimate, not a bill.** Only models with a published
+  price are costed; the rest are labelled and the coverage ratio is shown
+- **Strictly read-only** towards every third-party agent directory — nothing is
+  written, moved or deleted there
+- **No network access**; the price table is hand-maintained static data
+- **Unsigned**, so SmartScreen may warn "unknown publisher" on first run
+- Windows installer only; on Linux use `pip install`
+
+---
+
+## License
+
+MIT, see [LICENSE](LICENSE).
+
+Third-party brand icons belong to their respective vendors and are used only to
+identify the corresponding agent.
