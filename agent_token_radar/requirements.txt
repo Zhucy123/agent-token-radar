@@ -1,0 +1,12 @@
+# agent-token-radar dependencies
+#
+# Core (scan / stats / storage) uses ONLY the Python standard library.
+# Python 3.14+ ships compression.zstd for DSH session logs; on 3.11-3.13,
+# install zstandard OR rely on the plain-.jsonl fallback.
+#
+# Web dashboard (`serve`) only:
+fastapi>=0.110
+uvicorn>=0.27
+
+# Optional, only needed on Python < 3.14:
+# zstandard>=0.22; python_version < "3.14"

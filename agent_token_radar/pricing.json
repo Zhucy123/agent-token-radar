@@ -1,0 +1,113 @@
+{
+  "_comment": "Official list prices, per 1,000,000 tokens, in USD. Hand-maintained: vendors change prices, so every entry carries the URL it came from and the date it was read. A model that is not here has NO price and must render as unknown -- never guess one.",
+  "_updated": "2026-11-22",
+  "_note_on_units": "amount is per 1M tokens, always USD. 'input' is the cache-MISS input price. 'cache_read' is the cache-HIT input price. 'cache_write' is the cache-write price when the vendor bills it separately. Vendors that publish in CNY are recorded here at their USD page instead, so no exchange rate is involved anywhere.",
+  "_note_on_peak": "A block named 'peak_hours' means the model bills by wall-clock time, not a flat rate. 'offpeak' multiplies each bucket above; it is applied per request from that request's own timestamp. See 'peak_hours' for the window.",
+
+  "sources": {
+    "deepseek": { "url": "https://api-docs.deepseek.com/quick_start/pricing", "currency": "USD", "read": "2026-11-22" },
+    "openai": { "url": "https://developers.openai.com/api/docs/pricing", "currency": "USD", "read": "2026-11-22" },
+    "anthropic": { "url": "https://platform.claude.com/docs/en/about-claude/pricing", "currency": "USD", "read": "2026-11-22" },
+    "kimi": { "url": "https://platform.kimi.ai/docs/pricing/chat", "currency": "USD", "read": "2026-11-22" },
+    "zhipu": { "url": "https://docs.z.ai/guides/overview/pricing", "currency": "USD", "read": "2026-11-22" },
+    "qwen": { "url": "https://www.alibabacloud.com/help/en/model-studio/qwen3-8-flash", "currency": "USD", "read": "2026-11-22" }
+  },
+
+  "peak_hours_note": "DeepSeek bills by time of day. Windows below are UTC, on weekdays only, and Chinese public holidays bill off-peak all day. Off-peak is exactly half of peak. Taken from the footnote on DeepSeek's pricing page: 'Peak hours are 01:00 - 04:00 and 06:00 - 10:00 UTC, Monday through Friday, excluding Chinese public holidays.' Every other key here must be a vendor name.",
+  "peak_hours": {
+    "deepseek": {
+      "utc_windows": [["01:00", "04:00"], ["06:00", "10:00"]],
+      "weekdays_only": true,
+      "skip_dates": [
+        "2026-01-01", "2026-02-17", "2026-05-01",
+        "2026-06-19", "2026-09-25", "2026-10-01"
+      ],
+      "skip_dates_source": "https://date.nager.at/api/v3/PublicHolidays/2026/CN",
+      "skip_dates_note": "Statutory holidays only. The surrounding 调休 (shifted) days are still ordinary billing days, and the published State Council calendar adds bridge days that this list does not attempt to model -- a bridge day that is actually a holiday bills slightly high. Refresh this list each year.",
+      "offpeak_multiplier": 0.5
+    }
+  },
+
+  "models": {
+    "deepseek-flash": {
+      "vendor": "deepseek", "currency": "USD", "matched": "DeepSeek-V4.1-Flash-1017",
+      "input": 0.30, "output": 1.20, "cache_read": 0.006,
+      "offpeak": { "input": 0.15, "output": 0.60, "cache_read": 0.003 },
+      "note": "Peak rate listed; offpeak block is billed 01:00-04:00/06:00-10:00 UTC Mon-Fri are peak, everything else off-peak. Legacy deepseek-v4-flash / vision-exp bill at this price."
+    },
+    "deepseek-v4-flash": {
+      "vendor": "deepseek", "currency": "USD", "matched": "DeepSeek-V4.1-Flash-1017",
+      "input": 0.30, "output": 1.20, "cache_read": 0.006,
+      "offpeak": { "input": 0.15, "output": 0.60, "cache_read": 0.003 },
+      "note": "Retired name, still accepted and served by V4.1-Flash."
+    },
+    "deepseek-v4-flash-vision-exp": {
+      "vendor": "deepseek", "currency": "USD", "matched": "DeepSeek-V4.1-Flash-1017",
+      "input": 0.30, "output": 1.20, "cache_read": 0.006,
+      "offpeak": { "input": 0.15, "output": 0.60, "cache_read": 0.003 },
+      "note": "Retired name, still accepted and served by V4.1-Flash."
+    },
+    "deepseek-v4.1-flash": {
+      "vendor": "deepseek", "currency": "USD", "matched": "DeepSeek-V4.1-Flash-1017",
+      "input": 0.30, "output": 1.20, "cache_read": 0.006,
+      "offpeak": { "input": 0.15, "output": 0.60, "cache_read": 0.003 },
+      "note": "Peak rate; offpeak half."
+    },
+    "deepseek-v4-flash-0731": {
+      "vendor": "deepseek", "currency": "USD", "matched": "DeepSeek-V4.1-Flash-1017",
+      "input": 0.30, "output": 1.20, "cache_read": 0.006,
+      "offpeak": { "input": 0.15, "output": 0.60, "cache_read": 0.003 },
+      "note": "Versioned alias of the Flash line; billed at the Flash price."
+    },
+    "deepseek-v4.1-flash-sg": {
+      "vendor": "deepseek", "currency": "USD", "matched": "DeepSeek-V4.1-Flash-1017",
+      "input": 0.30, "output": 1.20, "cache_read": 0.006,
+      "offpeak": { "input": 0.15, "output": 0.60, "cache_read": 0.003 },
+      "note": "Regional suffix on the same Flash model."
+    },
+    "deepseek-v4.1-flash-expires-on-0910": {
+      "vendor": "deepseek", "currency": "USD", "matched": "DeepSeek-V4.1-Flash-1017",
+      "input": 0.30, "output": 1.20, "cache_read": 0.006,
+      "offpeak": { "input": 0.15, "output": 0.60, "cache_read": 0.003 },
+      "note": "Expiry-suffixed alias of the same Flash model."
+    },
+    "workbuddy/deepseek-v4.1-flash": {
+      "vendor": "deepseek", "currency": "USD", "matched": "DeepSeek-V4.1-Flash-1017",
+      "input": 0.30, "output": 1.20, "cache_read": 0.006,
+      "offpeak": { "input": 0.15, "output": 0.60, "cache_read": 0.003 },
+      "note": "Gateway-namespaced alias recorded verbatim by WorkBuddy."
+    },
+    "deepseek-v4-pro": {
+      "vendor": "deepseek", "currency": "USD", "matched": "DeepSeek-V4-Pro-0813",
+      "input": 1.32, "output": 3.96, "cache_read": 0.044,
+      "offpeak": { "input": 0.66, "output": 1.98, "cache_read": 0.022 },
+      "note": "Peak rate; offpeak half."
+    },
+
+    "gpt-6.2-astra": { "vendor": "openai", "currency": "USD", "input": 8.00, "output": 40.00, "cache_read": 0.40, "note": "Standard, short context." },
+    "gpt-6.2-sol":   { "vendor": "openai", "currency": "USD", "input": 2.00, "output": 10.00, "cache_read": 0.10, "note": "Standard, short context." },
+    "gpt-6-astra":   { "vendor": "openai", "currency": "USD", "input": 10.00, "output": 50.00, "cache_read": 1.00, "note": "Standard, short context." },
+    "gpt-6.1-sol":   { "vendor": "openai", "currency": "USD", "input": 2.00, "output": 10.00, "cache_read": 0.10, "note": "Standard, short context." },
+    "gpt-6.1-terra": { "vendor": "openai", "currency": "USD", "input": 1.00, "output": 5.00, "cache_read": 0.05, "note": "Standard, short context." },
+    "gpt-6-luna":    { "vendor": "openai", "currency": "USD", "input": 0.10, "output": 0.50, "cache_read": 0.01, "note": "Standard, short context." },
+    "gpt-6-sol":     { "vendor": "openai", "currency": "USD", "input": 2.00, "output": 10.00, "cache_read": 0.20, "note": "Standard, short context." },
+    "gpt-5.6-sol":   { "vendor": "openai", "currency": "USD", "input": 4.00, "output": 20.00, "cache_read": 0.40, "note": "Standard, short context." },
+    "gpt-5.6-terra": { "vendor": "openai", "currency": "USD", "input": 2.00, "output": 12.00, "cache_read": 0.20, "note": "Standard, short context." },
+    "gpt-5.6-luna":  { "vendor": "openai", "currency": "USD", "input": 0.20, "output": 1.20, "cache_read": 0.02, "note": "Standard, short context." },
+
+    "claude-sonnet-5-5": { "vendor": "anthropic", "currency": "USD", "input": 2.00, "output": 10.00, "cache_read": 0.10, "cache_write": 2.50, "note": "5m cache write." },
+    "claude-sonnet-5":   { "vendor": "anthropic", "currency": "USD", "input": 2.00, "output": 10.00, "cache_read": 0.20, "cache_write": 2.50, "note": "5m cache write." },
+
+    "kimi-k3.1-pro": { "vendor": "kimi", "currency": "USD", "input": 2.00, "output": 10.00, "cache_read": 0.20, "cache_write": 2.00, "note": "5m cache write." },
+    "workbuddy/kimi-k3.1-pro": { "vendor": "kimi", "currency": "USD", "input": 2.00, "output": 10.00, "cache_read": 0.20, "cache_write": 2.00, "note": "Gateway-namespaced alias recorded verbatim by WorkBuddy." },
+    "kimi-k3-1":     { "vendor": "kimi", "currency": "USD", "input": 2.00, "output": 10.00, "cache_read": 0.20, "cache_write": 2.00, "note": "Hyphenated spelling of kimi-k3.1-pro." },
+    "kimi-k3":       { "vendor": "kimi", "currency": "USD", "input": 3.00, "output": 15.00, "cache_read": 0.30, "cache_write": 3.00, "note": "5m cache write." },
+
+    "glm-5.3":        { "vendor": "zhipu", "currency": "USD", "input": 1.4, "output": 4.4, "cache_read": 0.26, "note": "Z.AI international (USD) list. The CN site quotes CNY; that is a different price sheet, not this one." },
+    "glm-5.3-flash":  { "vendor": "zhipu", "currency": "USD", "input": 0.15, "output": 0.50, "cache_read": 0.03, "note": "Z.AI international (USD) list." },
+    "glm-5.3-flashx": { "vendor": "zhipu", "currency": "USD", "input": 0.37, "output": 1.25, "cache_read": 0.075, "note": "Z.AI international (USD) list." },
+    "glm-5.2":        { "vendor": "zhipu", "currency": "USD", "input": 1.4, "output": 4.4, "cache_read": 0.26, "note": "Z.AI international (USD) list." },
+
+    "qwen3.8-flash": { "vendor": "qwen", "currency": "USD", "input": 0.113, "output": 0.382, "cache_read": 0.014, "cache_write": 0.177, "note": "China (Beijing) region, USD list. Explicit cache creation is billed separately at 0.177; Singapore/HK quote 0.15/0.47/0.016." }
+  }
+}

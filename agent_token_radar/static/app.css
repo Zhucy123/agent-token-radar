@@ -1,0 +1,999 @@
+/* agent-token-radar dashboard.
+   dark-mode guide: color-scheme on :root (viewport-wide) + light-dark() tokens
+   with a prefers-color-scheme fallback for older browsers.
+   responsive-table guide: semantic table, container query, stacked layout.
+   typography guide: rem font sizes, unitless line-height, clamp() ranges.
+   css guide: cascade layers, logical properties, :where() for defaults. */
+
+@layer reset, base, tokens, components, utilities;
+
+/* ============================================================== tokens */
+@layer tokens {
+  :root {
+    color-scheme: light dark;
+
+    /* -- tier 1: literal colours ------------------------------------- */
+    --bg-light: #f4f6fa;   --bg-dark: #0d1016;
+    --panel-light: #ffffff; --panel-dark: #161a22;
+    --text-light: #16202e;  --text-dark: #e7ecf3;
+    --muted-light: #5d6b7e; --muted-dark: #8f9cae;
+    --line-light: #e3e8f0;  --line-dark: #262d3a;
+    --brand-light: #2563eb; --brand-dark: #6ba4fb;
+    --accent-light: #7c3aed; --accent-dark: #a78bfa;
+    --good-light: #0b8f61;  --good-dark: #3ddc97;
+    /* warn: the "inferred" provider tag. A guess must look like a guess
+       without looking like an error. */
+    --warn-light: #a85507;  --warn-dark: #fbbf24;
+
+    /* -- tier 2: semantic -------------------------------------------- */
+    --bg: var(--bg-light);
+    --panel: var(--panel-light);
+    --text: var(--text-light);
+    --muted: var(--muted-light);
+    --line: var(--line-light);
+    --brand: var(--brand-light);
+    --accent: var(--accent-light);
+    --good: var(--good-light);
+    --warn: var(--warn-light);
+
+    /* MANDATORY fallback for browsers without light-dark() support */
+    @media (prefers-color-scheme: dark) {
+      --bg: var(--bg-dark);       --panel: var(--panel-dark);
+      --text: var(--text-dark);   --muted: var(--muted-dark);
+      --line: var(--line-dark);   --brand: var(--brand-dark);
+      --accent: var(--accent-dark); --good: var(--good-dark);
+      --warn: var(--warn-dark);
+    }
+    @supports (color: light-dark(white, black)) {
+      --bg: light-dark(var(--bg-light), var(--bg-dark));
+      --panel: light-dark(var(--panel-light), var(--panel-dark));
+      --text: light-dark(var(--text-light), var(--text-dark));
+      --muted: light-dark(var(--muted-light), var(--muted-dark));
+      --line: light-dark(var(--line-light), var(--line-dark));
+      --brand: light-dark(var(--brand-light), var(--brand-dark));
+      --accent: light-dark(var(--accent-light), var(--accent-dark));
+      --good: light-dark(var(--good-light), var(--good-dark));
+      --warn: light-dark(var(--warn-light), var(--warn-dark));
+    }
+
+    /* -- tier 3: general UI ------------------------------------------ */
+    /* A subtle fill so a surface reads as raised without a heavy border. */
+    --surface-sunken: light-dark(#edf1f7, #0a0d12);
+    --surface-raised: light-dark(#ffffff, #171c25);
+    --hairline: light-dark(#e8edf5, #232a36);
+    /* Elevation: soft, low-contrast. Two shadows read as depth; one reads as
+       a smudge, so the tight ring keeps the edge crisp. */
+    --shadow-1: 0 1px 2px light-dark(#0f172a0f, #0006),
+                0 1px 1px light-dark(#0f172a08, #0004);
+    --shadow-2: 0 4px 16px light-dark(#0f172a14, #0008),
+                0 1px 3px light-dark(#0f172a0f, #0006);
+
+    /* Typography scale. rem, never px: the browser font-size preference must
+       win (typography guide), and 1.5x min->max keeps 200% zoom usable. */
+    --text-xs: 0.6875rem;   /* 11px */
+    --text-sm: 0.75rem;     /* 12px */
+    --text-base: 0.8125rem; /* 13px */
+    --text-md: 0.875rem;    /* 14px */
+    --text-lg: 0.9375rem;   /* 15px */
+    --text-xl: 1.125rem;    /* 18px */
+    --fs-metric: clamp(1.0625rem, 0.98rem + 0.55vw, 1.625rem);
+
+    --space-1: 0.25rem;  --space-2: 0.5rem;
+    --space-3: 0.75rem;  --space-4: 1rem;
+    --space-5: 1.25rem;  --space-6: 1.5rem;
+    --space-8: 2rem;
+
+    --radius-sm: 8px;
+    --radius: 12px;
+    --radius-lg: 16px;
+
+    --topbar-h: 3.75rem;
+
+    accent-color: var(--brand);
+    /* Scrollbar thumb vs track needs 3:1; --muted is the safe choice. */
+    scrollbar-color: var(--muted) transparent;
+  }
+
+  /* Legacy WebKit needs the pseudo-elements; resetting scrollbar-width keeps
+     them from being suppressed in browsers that support one but not the other. */
+  @supports not (scrollbar-color: auto) {
+    :root { scrollbar-width: auto; }
+    ::-webkit-scrollbar { inline-size: 12px; block-size: 12px; }
+    ::-webkit-scrollbar-thumb {
+      background: var(--muted); border-radius: 6px;
+      border: 3px solid transparent; background-clip: content-box;
+    }
+    ::-webkit-scrollbar-track { background: transparent; }
+  }
+}
+
+/* =============================================================== base */
+@layer base {
+  html {
+    font-family: system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+    /* Anchor jumps must not land under the sticky bar. */
+    scroll-padding-block-start: calc(var(--topbar-h) + var(--space-4));
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-size: var(--text-md);
+    line-height: 1.5;
+    /* Subtle vertical wash so the page has depth without a hard seam at the
+       first section. */
+    background-image: linear-gradient(
+      light-dark(#ffffff66, #ffffff05) 0,
+      transparent 22rem
+    );
+    background-repeat: no-repeat;
+  }
+  h1, h2, h3 { line-height: 1.25; }
+
+  :focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+  }
+  ::selection { background: color-mix(in oklab, var(--brand) 26%, transparent); }
+
+  .skip-link {
+    position: absolute;
+    inset-inline-start: var(--space-2);
+    inset-block-start: -4rem;
+    z-index: 20;
+    background: var(--brand);
+    color: #fff;
+    padding: var(--space-2) var(--space-4);
+    border-radius: var(--radius-sm);
+    text-decoration: none;
+    font-size: var(--text-md);
+    transition: inset-block-start 120ms ease-out;
+  }
+  .skip-link:focus { inset-block-start: var(--space-2); }
+}
+
+/* ========================================================= components */
+@layer components {
+
+  /* ---------- header ---------- */
+  .topbar {
+    position: sticky;
+    inset-block-start: 0;
+    z-index: 5;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-3) var(--space-6);
+    padding: var(--space-3) var(--space-6);
+    background: color-mix(in oklab, var(--panel) 86%, transparent);
+    /* Backdrop blur only works when the surface is translucent; the solid
+       fallback above keeps it readable where blur is unsupported. */
+    backdrop-filter: blur(12px) saturate(1.4);
+    border-block-end: 1px solid var(--hairline);
+    box-shadow: var(--shadow-1);
+  }
+  .brand { display: flex; align-items: center; gap: var(--space-2); min-inline-size: 0; }
+  .brand h1 {
+    margin: 0;
+    font-size: var(--text-xl);
+    letter-spacing: -.02em;
+    text-wrap: balance;
+  }
+  /* A radar sweep glyph instead of a plain dot: it says what the tool is. */
+  .mark {
+    display: grid;
+    place-items: center;
+    inline-size: 1.75rem;
+    block-size: 1.75rem;
+    flex: 0 0 auto;
+    border-radius: 9px;
+    background: color-mix(in oklab, var(--brand) 14%, transparent);
+    color: var(--brand);
+  }
+  .mark svg { inline-size: 1.125rem; block-size: 1.125rem; }
+  .btn-icon { inline-size: 1rem; block-size: 1rem; flex: 0 0 auto; }
+  .dot {
+    inline-size: 0.4375rem; block-size: 0.4375rem;
+    border-radius: 50%;
+    background: var(--good);
+    flex: 0 0 auto;
+    /* A quiet pulse marks "live", but never animates for reduced-motion users. */
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--good) 60%, transparent);
+    animation: pulse 3s ease-out infinite;
+  }
+  @keyframes pulse {
+    0%   { box-shadow: 0 0 0 0 color-mix(in oklab, var(--good) 55%, transparent); }
+    70%  { box-shadow: 0 0 0 0.4rem color-mix(in oklab, var(--good) 0%, transparent); }
+    100% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--good) 0%, transparent); }
+  }
+  .tagline { color: var(--muted); font-size: var(--text-sm); }
+
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+    margin-inline-start: auto;
+  }
+
+  /* Segmented control (range + language). One shared look: a sunken track
+     with a raised selected segment. */
+  .ranges, .lang-switch {
+    display: flex;
+    gap: 2px;
+    padding: 3px;
+    background: var(--surface-sunken);
+    border: 1px solid var(--hairline);
+    border-radius: 10px;
+  }
+  .ranges button, .lang-switch button {
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+    font: inherit;
+    font-weight: 600;
+    /* 44px on touch: a 34px target is hard to hit with a thumb. */
+    min-block-size: 2.125rem;
+    transition: background 120ms ease, color 120ms ease, box-shadow 120ms ease;
+  }
+  .ranges button { padding: var(--space-2) var(--space-3); font-size: var(--text-base); }
+  .lang-switch button { padding: var(--space-1) var(--space-2); font-size: var(--text-sm); letter-spacing: .02em; }
+  .ranges button:hover, .lang-switch button:hover { color: var(--text); }
+  :where(.ranges, .lang-switch) button[aria-pressed="true"] {
+    background: var(--surface-raised);
+    color: var(--brand);
+    box-shadow: var(--shadow-1);
+  }
+
+  .btn-primary {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    border: 1px solid color-mix(in oklab, var(--brand) 70%, var(--line));
+    background: var(--brand);
+    color: #fff;
+    padding: var(--space-2) var(--space-4);
+    border-radius: 10px;
+    cursor: pointer;
+    font: inherit;
+    font-weight: 650;
+    font-size: var(--text-base);
+    min-block-size: 2.25rem;
+    box-shadow: var(--shadow-1);
+    transition: filter 120ms ease, transform 120ms ease, box-shadow 120ms ease;
+  }
+  /* :not(:disabled) so a disabled button never picks up the hover style,
+     regardless of rule order. */
+  .btn-primary:hover:not(:disabled) { filter: brightness(1.07); box-shadow: var(--shadow-2); }
+  .btn-primary:active:not(:disabled) { transform: translateY(1px); }
+  .btn-primary:disabled { opacity: .55; cursor: progress; }
+
+  .auto {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    color: var(--muted);
+    font-size: var(--text-sm);
+    cursor: pointer;
+    min-block-size: 2.25rem;
+    padding-inline: var(--space-1);
+  }
+  /* :has() instead of a JS-managed class: the label follows its own checkbox. */
+  .auto:has(input:checked) { color: var(--text); }
+
+  .status {
+    flex-basis: 100%;
+    margin: 0;
+    color: var(--muted);
+    font-size: var(--text-sm);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ---------- agent icon ---------- */
+  .agent-icon { flex: 0 0 auto; display: block; vertical-align: -3px; }
+  .agent-cell { display: inline-flex; align-items: center; gap: var(--space-2); }
+  /* A merged project row shows one mark per contributing Agent. The icons sit
+     tighter against each other than against the label, otherwise the cluster
+     reads as separate columns. */
+  .agent-cell--stack { gap: 4px; }
+  .agent-cell--stack > span:not(.agent-more) { margin-inline-start: 4px; }
+  .agent-more {
+    font-size: var(--text-xs);
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+    cursor: help;
+  }
+
+  /* A cost is derived, not measured, so its card is visually distinct from the
+     token cards: same layout, a dashed accent, and the coverage caveat under
+     the number. */
+  .card-cost { border-inline-start: 3px dashed var(--muted); }
+  /* "No published price" reads as a gap, never as $0.00. */
+  .cost-unpriced { color: var(--muted); cursor: help; }
+  /* Some official marks are a full-bleed tile with no transparency. Without a
+     matching plate they glow as a white square on the dark theme. */
+  .agent-icon.is-tiled {
+    padding: 2px;
+    border-radius: 6px;
+    background: var(--panel);
+    box-shadow: 0 0 0 1px var(--line);
+    box-sizing: content-box;
+  }
+  /* The inverse case: a transparent PNG whose strokes are near-black. On the
+     dark theme those strokes vanish into the panel, so the mark gets a light
+     plate and is inverted -- the artwork itself is still the vendor's. */
+  .agent-icon.is-mono {
+    padding: 2px;
+    border-radius: 6px;
+    box-sizing: content-box;
+  }
+  @media (prefers-color-scheme: dark) {
+    .agent-icon.is-mono {
+      background: var(--panel);
+      box-shadow: 0 0 0 1px var(--line);
+      filter: invert(1) hue-rotate(180deg);
+    }
+    /* Only the plate needs to go light; inverting a tiled mark would falsify
+       the vendor's own colours. */
+  }
+  .badge-unofficial {
+    font-size: var(--text-xs);
+    font-weight: 500;
+    color: var(--muted);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 1px 6px;
+    white-space: nowrap;
+  }
+
+  /* ---------- layout ---------- */
+  main {
+    max-inline-size: 90rem;
+    margin: 0 auto;
+    padding: var(--space-6);
+  }
+
+  /* ---------- desktop window shell (?app=1) ----------
+     Inside the native window there is no browser toolbar, so vertical space is
+     the scarce resource and horizontal space is the whole window. Tighten the
+     gutter, let the content use the full width on a big monitor, and hand the
+     scrollbars back to the OS so they look native rather than like a web page
+     pretending to be an app. */
+  [data-shell="app"] main {
+    /* No 90rem cap: on a 4K monitor the window is the container, and an empty
+       margin either side of a data table is wasted. */
+    max-inline-size: none;
+    padding: var(--space-4) var(--space-5);
+  }
+  [data-shell="app"] body { overscroll-behavior: none; }
+  /* The top bar already sits under the native title bar; its sticky offset
+     should hug it rather than leave a gap. */
+  [data-shell="app"] header { padding-block: var(--space-2); }
+  /* Native-looking thin scrollbars, and no layout shift when they appear. */
+  [data-shell="app"] * {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklab, currentColor 28%, transparent) transparent;
+  }
+  [data-shell="app"] .table-wrapper { scrollbar-gutter: stable; }
+  .section-title {
+    margin: var(--space-8) 0 var(--space-3);
+    font-size: var(--text-lg);
+    font-weight: 650;
+    letter-spacing: -.01em;
+    text-wrap: balance;
+  }
+  /* First heading must not push the page down with its top margin. */
+  main > section:first-of-type .section-title { margin-block-start: 0; }
+
+  .note {
+    color: var(--muted);
+    font-size: var(--text-sm);
+    line-height: 1.6;
+    margin-block-start: var(--space-3);
+    /* Cap running text at ~80 characters so it stays readable. */
+    max-inline-size: 80ch;
+    text-wrap: pretty;
+  }
+
+  /* ---------- metric cards ---------- */
+  .cards {
+    display: grid;
+    /* auto-fit + minmax keeps 6 cards on one row when there is room, 3 on a
+       laptop, 2 on a tablet and 1 on a phone, with no media queries. The floor
+       is small enough that a 320px phone still fits one column. */
+    grid-template-columns: repeat(auto-fit, minmax(min(11rem, 100%), 1fr));
+    gap: var(--space-3);
+  }
+  .card {
+    position: relative;
+    background: var(--panel);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius);
+    padding: var(--space-4) var(--space-5);
+    box-shadow: var(--shadow-1);
+    overflow: hidden;
+    transition: box-shadow 160ms ease, transform 160ms ease,
+                border-color 160ms ease;
+  }
+  .card:hover {
+    box-shadow: var(--shadow-2);
+    border-color: color-mix(in oklab, var(--brand) 22%, var(--hairline));
+    transform: translateY(-1px);
+  }
+  .card h3 {
+    margin: 0;
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    text-wrap: balance;
+  }
+  /* The number is the point of the card, so it owns the scale. no-wrap keeps
+     13-digit token sums on one line; the clamp shrinks them to fit instead. */
+  .card .value {
+    margin: var(--space-2) 0 2px;
+    font-size: var(--fs-metric);
+    font-weight: 700;
+    letter-spacing: -.03em;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .card .sub {
+    margin: 0;
+    font-size: var(--text-xs);
+    color: var(--muted);
+    text-wrap: pretty;
+  }
+  /* A 3px accent bar reads as hierarchy without shouting. Border (not
+     box-shadow) so it survives forced-colors mode. */
+  .card-total, .card-hit, .card-good {
+    border-inline-start-width: 3px;
+    border-inline-start-style: solid;
+  }
+  .card-total { border-inline-start-color: var(--brand); }
+  .card-total .value { color: var(--brand); }
+  .card-hit { border-inline-start-color: var(--good); }
+  .card-hit .value { color: var(--good); }
+
+  /* ---------- chart panel ---------- */
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius);
+    padding: var(--space-4);
+    box-shadow: var(--shadow-1);
+  }
+  .chart-panel {
+    block-size: clamp(15rem, 30vh, 21rem);
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    gap: 0;
+    /* The panel normally pads its content, but the chart's coordinate system is
+       its content box. Zero the padding here and let the scroller and the axis
+       strip position themselves, so a DOM tick can be placed at exactly the
+       canvas pixel its grid line occupies. */
+    padding: 0;
+  }
+  /* The y-axis is a fixed strip beside the scroller, not part of the canvas:
+     on a long range the canvas is far wider than the viewport, so axis text
+     painted into it would scroll out of sight. */
+  .chart-yaxis {
+    position: relative;
+    flex: 0 0 auto;
+    inline-size: 4.25rem;
+    overflow: hidden;
+    block-size: 100%;
+  }
+  .yaxis-tick {
+    position: absolute;
+    inset-inline-end: var(--space-2);
+    transform: translateY(-50%);
+    font-size: 0.6875rem;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    pointer-events: none;
+  }
+  /* A wide range draws more bars than fit, so the plot grows and this wrapper
+     scrolls sideways. The panel keeps `overflow: hidden` for its rounded
+     corners; scrolling happens here, inside it. */
+  .chart-scroller {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+    block-size: 100%;
+    /* The canvas is sized to the scroller's own box, so a horizontal scrollbar
+       that takes vertical space would shrink the drawing area every time it
+       appears, and the chart would jump by the scrollbar height. Reserve
+       nothing vertically and keep the bar thin. */
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
+  }
+  .chart-panel canvas { display: block; }
+  /* When the range holds a single bucket the bar chart is replaced by a ranked
+     share list. The panel stops being a flex row at that moment, or the axis
+     strip and the empty scroller would sit beside it as dead columns. */
+  .chart-panel:has(#agentShares:not([hidden])) {
+    display: block;
+    padding: var(--space-4);
+    /* The share list is as tall as it needs to be; keeping the chart's fixed
+       height here left a large empty block under three rows. */
+    block-size: auto;
+  }
+  .chart-panel:has(#agentShares:not([hidden])) .chart-yaxis,
+  .chart-panel:has(#agentShares:not([hidden])) .chart-scroller { display: none; }
+
+  .agent-shares { inline-size: 100%; }
+  .shares-head {
+    margin: 0 0 var(--space-3);
+    font-size: var(--text-sm);
+    color: var(--muted);
+  }
+  .shares-list { list-style: none; margin: 0; padding: 0; }
+  .share-row {
+    display: grid;
+    grid-template-columns: minmax(7rem, 13rem) 1fr minmax(8rem, auto);
+    align-items: center;
+    gap: var(--space-3);
+    padding-block: var(--space-2);
+  }
+  .share-row + .share-row { border-block-start: 1px solid var(--hairline); }
+  .share-name {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--text-sm);
+    font-weight: 550;
+    color: var(--text);
+    min-inline-size: 0;
+  }
+  .share-track {
+    display: block;
+    block-size: 0.625rem;
+    border-radius: 999px;
+    background: var(--surface-sunken);
+    overflow: hidden;
+  }
+  .share-bar {
+    display: block;
+    block-size: 100%;
+    border-radius: 999px;
+  }
+  .share-value {
+    font-size: var(--text-sm);
+    font-variant-numeric: tabular-nums;
+    color: var(--muted);
+    text-align: end;
+    white-space: nowrap;
+  }
+  @media (width < 40rem) {
+    .share-row {
+      grid-template-columns: 1fr auto;
+      gap: var(--space-1) var(--space-2);
+    }
+    .share-track { grid-column: 1 / -1; order: 3; }
+  }
+  .chart-fallback { color: var(--muted); font-size: var(--text-base); }
+  .chart-tip {
+    position: absolute;
+    z-index: 3;
+    pointer-events: none;
+    background: var(--surface-raised);
+    color: var(--text);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-sm);
+    padding: var(--space-2) var(--space-3);
+    font-size: var(--text-sm);
+    line-height: 1.6;
+    box-shadow: var(--shadow-2);
+    /* The panel clips its children, so a tooltip wider than the panel would be
+       cut off on a narrow window no matter where it is placed. Cap it against
+       the panel rather than against the viewport: the panel is the clipping
+       box, and minus 2x the 8px inset the placement logic reserves. */
+    max-inline-size: min(18rem, calc(100% - 1rem));
+  }
+  .chart-tip .tip-head { font-weight: 650; margin-block-end: 2px; }
+  .chart-tip .tip-row { display: flex; align-items: center; gap: var(--space-1); }
+  /* The fold-in row for a bar split across more Agents than fit. */
+  .chart-tip .tip-more { color: var(--muted); font-style: italic; }
+  .chart-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-4);
+    margin-block-start: var(--space-3);
+    font-size: var(--text-sm);
+    color: var(--muted);
+  }
+  .legend-item { display: inline-flex; align-items: center; gap: var(--space-1); }
+  .legend-swatch { inline-size: 0.625rem; block-size: 0.625rem; border-radius: 3px; flex: 0 0 auto; }
+
+  /* ---------- responsive table (responsive-table guide) ---------- */
+  .table-wrapper {
+    overflow: auto;
+    max-inline-size: 100%;
+    /* Leave room for the sticky bar; 80vh keeps the page scrollable on short
+       laptop screens instead of trapping the wheel inside the table. */
+    max-block-size: min(32rem, 76vh);
+    container-type: inline-size;
+    background: var(--panel);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-1);
+    /* Reserve the gutter so adding a scrollbar does not shift every column. */
+    scrollbar-gutter: stable;
+  }
+  table {
+    border-collapse: separate;
+    border-spacing: 0;
+    inline-size: 100%;
+    font-size: var(--text-base);
+  }
+  /* The session table carries 8 columns; let it grow to its natural width
+     inside the scrollable wrapper rather than ellipsizing 13-digit numbers. */
+  #sessionTable { inline-size: max-content; min-inline-size: 100%; }
+
+  caption {
+    text-align: start;
+    padding: var(--space-3) var(--space-4);
+    color: var(--muted);
+    font-size: var(--text-sm);
+    /* A caption is a table child: never let it be squeezed into a 1-character
+       column by a narrow container. */
+    white-space: normal;
+    inline-size: 100%;
+    box-sizing: border-box;
+  }
+
+  thead { position: sticky; inset-block-start: 0; z-index: 1; }
+  th, td {
+    padding: var(--space-2) var(--space-4);
+    text-align: start;
+    border-block-end: 1px solid var(--hairline);
+    white-space: nowrap;
+  }
+  thead th {
+    background: var(--surface-raised);
+    font-size: var(--text-xs);
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    color: var(--muted);
+    font-weight: 650;
+    /* A hairline under the sticky header: the only shadow that survives
+       forced-colors mode is a border, so this is a border. */
+    box-shadow: inset 0 -1px 0 var(--line);
+  }
+  tbody th {
+    position: sticky;
+    inset-inline-start: 0;
+    background: var(--panel);
+    font-weight: 600;
+    text-align: start;
+  }
+  td.num, th.num { text-align: end; font-variant-numeric: tabular-nums; }
+  /* No border under the last row: it would double up with the wrapper edge. */
+  tbody tr:not(:last-child) th,
+  tbody tr:not(:last-child) td { border-block-end: 1px solid var(--hairline); }
+  tbody tr:last-child th, tbody tr:last-child td { border-block-end: 0; }
+
+  /* A very light zebra aids horizontal scanning across 8 numeric columns.
+     Applied to td only, and group-header rows are excluded by their own
+     background rule below (which is more specific by class, not by order). */
+  tbody tr:not(.model-group):nth-child(even) td {
+    background: color-mix(in oklab, var(--text) 2.5%, transparent);
+  }
+  tbody tr:hover th, tbody tr:hover td {
+    background: color-mix(in oklab, var(--brand) 7%, transparent);
+  }
+
+  .mono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: var(--text-sm);
+  }
+  .empty {
+    color: var(--muted);
+    text-align: center;
+    padding: var(--space-8);
+    font-size: var(--text-base);
+  }
+
+  /* Agent / Model breakdown: one group header per agent, then its models. */
+  .model-group th, .model-group td {
+    background: var(--surface-sunken);
+    border-block-start: 1px solid var(--line);
+    border-block-end: 1px solid var(--line);
+    padding-block: var(--space-2);
+    font-weight: 650;
+  }
+  .model-group th { position: static; } /* sticky column would cover it */
+  .model-group .group-share {
+    margin-inline-start: var(--space-2);
+    font-size: var(--text-xs);
+    font-weight: 500;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .model-name { display: block; font-weight: 600; }
+
+  .project-name {
+    display: block;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: var(--text-sm);
+    font-weight: 500;
+    max-inline-size: 48ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    /* Hovering shows the full path via the title attribute. */
+    cursor: help;
+  }
+
+  /* A project row that merges several Agents: the whole line toggles, so it
+     needs to look clickable without turning into a button. */
+  .project-parent { cursor: pointer; }
+  .project-parent:hover { background: color-mix(in oklab, currentColor 4%, transparent); }
+  /* 32px hit target: it is the control people reach for. */
+  .project-toggle {
+    background: none;
+    border: 0;
+    padding: 0;
+    margin-inline-end: 6px;
+    min-inline-size: 32px;
+    min-block-size: 32px;
+    color: var(--muted);
+    font-size: var(--text-xs);
+    cursor: pointer;
+    vertical-align: middle;
+  }
+  .project-toggle:hover { color: inherit; }
+  /* Nested per-Agent rows read as detail, not as peers of the project. */
+  .project-child th,
+  .project-child td {
+    background: color-mix(in oklab, currentColor 3%, transparent);
+    color: var(--muted);
+  }
+  .project-child .project-name { font-weight: 400; cursor: default; }
+  .project-branch { color: var(--muted); }
+  /* The routing alias the agent logged: context, not the answer. */
+  .model-alias {
+    display: block;
+    margin-block-start: 1px;
+    font-size: var(--text-xs);
+    color: var(--muted);
+    cursor: help;
+  }
+  /* Provider + provenance tag on one line under the model name. Keeping them
+     inline is what keeps a model row two lines tall instead of three. */
+  .model-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0 var(--space-1);
+    margin-block-start: 1px;
+  }
+  .model-provider {
+    font-size: var(--text-xs);
+    font-weight: 400;
+    color: var(--muted);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+
+  /* Provenance tag. Only a guess is marked: "measured" is the default and
+     "product" is a structural fact, so tagging them on every row was noise.
+     A guess must never read as a measurement, hence its own shape (dashed)
+     and colour -- shape alone survives forced-colors mode. */
+  .prov-tag {
+    display: inline-block;
+    padding: 0 5px;
+    border-radius: 999px;
+    font-size: var(--text-xs);
+    font-weight: 500;
+    line-height: 1.35;
+    vertical-align: 1px;
+    cursor: help;
+    white-space: nowrap;
+  }
+  .prov-tag.prov-inferred {
+    border: 1px dashed currentColor;
+    color: var(--warn);
+    background: transparent;
+  }
+
+  /* Session cell: the title is what a human recognises, the id is the receipt. */
+  .session-title {
+    display: block;
+    font-weight: 600;
+    max-inline-size: 46ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .session-id {
+    display: block;
+    margin-block-start: 1px;
+    font-size: var(--text-xs);
+    font-weight: 400;
+    color: var(--muted);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    max-inline-size: 46ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .session-id.only { font-size: var(--text-sm); color: var(--text); font-weight: 500; }
+
+  /* ---------- footer ---------- */
+  footer {
+    margin-block-start: var(--space-8);
+    padding-block-start: var(--space-4);
+    border-block-start: 1px solid var(--hairline);
+    color: var(--muted);
+    font-size: var(--text-sm);
+    text-align: center;
+    /* The source grid below sizes itself from THIS element's width, not the
+       viewport's: the footer sits inside the page's own max-width column. */
+    container-type: inline-size;
+  }
+  footer p { margin: var(--space-1) 0; max-inline-size: 90ch; margin-inline: auto; }
+  .footer-providers { font-variant-numeric: tabular-nums; }
+  .footer-pricing { font-size: var(--text-xs); }
+  /* The peak window is a billing rule, not a footnote: it explains why a
+     DeepSeek figure differs from a flat-rate calculation. */
+  .footer-peak { font-size: var(--text-xs); }
+  .footer-icons { font-size: var(--text-xs); opacity: .85; }
+  .footer-lead {
+    margin-block-start: var(--space-2);
+    font-weight: 600;
+    color: var(--text);
+  }
+  .footer-caveat { font-size: var(--text-xs); }
+
+  /* Source list: the vendor's mark above its own name, one tile per agent.
+     auto-fit + a minimum tile width keeps 25 agents readable from phone to
+     desktop without a media query for every breakpoint. */
+  .source-list {
+    display: grid;
+    /* Five columns on a wide screen: 25 agents land exactly 5 x 5, with no
+       ragged last row. Narrower viewports step down to 4, then 3, then 2. */
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: var(--space-3);
+    margin: var(--space-4) auto var(--space-3);
+    padding: 0;
+    list-style: none;
+    max-inline-size: 62rem;
+  }
+  @container (width < 52rem) {
+    .source-list { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  }
+  @container (width < 40rem) {
+    .source-list { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  }
+  @container (width < 26rem) {
+    .source-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  .source-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-2) var(--space-3);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius);
+    background: var(--surface-raised);
+    /* A stable icon box: the three sources (SVG paths, inline SVG, PNG data
+       URI) have different intrinsic sizes, so without a fixed plate the names
+       below them would sit at different heights. */
+    min-block-size: 5.5rem;
+    justify-content: center;
+  }
+  .source-item .agent-icon {
+    inline-size: 2.25rem;
+    block-size: 2.25rem;
+    flex: none;
+  }
+  .source-name {
+    font-size: var(--text-xs);
+    line-height: 1.25;
+    text-align: center;
+    color: var(--text);
+    /* Long names ("Qoder Desktop", "Prime Coding Agent") must wrap inside the
+       tile instead of widening the grid column. */
+    overflow-wrap: anywhere;
+    text-wrap: balance;
+  }
+  .source-item.is-unofficial { border-style: dashed; }
+  @media (prefers-reduced-motion: no-preference) {
+    .source-item { transition: border-color .15s ease; }
+    .source-item:hover { border-color: var(--line); }
+  }
+
+  /* Stacked card layout when the table's OWN container is narrow
+     (responsive-table guide: container query, not media query, so it also
+     works inside a sidebar or a narrow dashboard widget). */
+  @container (width < 40rem) {
+    table, thead, tbody, tr, th, td { display: block; }
+    /* MANDATORY: hide the column header from layout AND assistive tech. */
+    thead { display: none; }
+    table { inline-size: 100%; }
+    /* The session table asks for max-content so its 8 columns fit the
+       horizontal scroller. In card mode that rule would push the whole page
+       wider than the viewport, so it must be reset here. */
+    #sessionTable { inline-size: auto; min-inline-size: 0; }
+    /* A long unbroken token (a session hash, a path) must wrap in card mode
+       instead of widening the card past the screen. */
+    tbody td, tbody th { overflow-wrap: anywhere; }
+    /* Once the table is a block box, a caption left as table-caption collapses
+       to a sliver and wraps to one character per line. Make it a plain block. */
+    caption { display: block; inline-size: auto; }
+    tr {
+      margin-block-end: var(--space-3);
+      border: 1px solid var(--hairline);
+      border-radius: var(--radius);
+      padding: var(--space-2);
+      background: var(--surface-raised);
+    }
+    /* Sticky row header becomes the card's title bar. */
+    tbody th {
+      position: sticky;
+      inset-block-start: 0;
+      z-index: 2;
+      background: var(--surface-raised);
+      border-block-end: 1px solid var(--hairline);
+    }
+    td { border-block-end: 0; white-space: normal; }
+    /* The label comes from data-label, written by the renderer in the active
+       language. A CSS custom property cannot do this: it would freeze the
+       label to one language and ignore the switch. */
+    td[data-label]::before {
+      content: attr(data-label) ": ";
+      color: var(--muted);
+    }
+    tbody tr:hover th, tbody tr:hover td,
+    tbody tr:not(.model-group):nth-child(even) td { background: transparent; }
+  }
+
+  /* ---------- coarse pointers (form-factor-adaptation) ---------- */
+  @media (pointer: coarse) {
+    .ranges button, .lang-switch button { min-block-size: 2.75rem; padding-inline: var(--space-3); }
+    .btn-primary { min-block-size: 2.75rem; }
+  }
+
+  /* ---------- high contrast ---------- */
+  /* Only reinforce what is genuinely low-contrast: hairlines and the muted
+     secondary text. This strengthens borders; it is not a baseline fix. */
+  @media (prefers-contrast: more) {
+    :root { --hairline: light-dark(#c5ceda, #39435a); }
+    .card { border-color: var(--line); }
+    tbody th, td { border-block-end-color: var(--line); }
+    .note, .card .sub, .status { color: var(--text); }
+  }
+
+  /* ---------- forced colors ---------- */
+  /* The browser replaces author colours here, so anything conveyed only by a
+     background or shadow disappears. Borders survive, which is why the accent
+     bars, the inferred tag's dashed outline and the header underline are all
+     borders rather than shadows. */
+  @media (forced-colors: active) {
+    .card, .panel, .table-wrapper { border: 1px solid CanvasText; }
+    .card-total, .card-hit { border-inline-start-color: Highlight; }
+    .prov-tag { border: 1px solid CanvasText; }
+    .prov-tag.prov-inferred { border-style: dashed; }
+    .btn-primary { border: 1px solid ButtonText; }
+    thead th { box-shadow: inset 0 -1px 0 CanvasText; }
+  }
+}
+
+/* ========================================================== utilities */
+@layer utilities {
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation: none !important;
+      transition: none !important;
+    }
+  }
+}

@@ -1,0 +1,15 @@
+# Normalise line endings in the repository so a Windows checkout and a Linux
+# checkout produce identical diffs. Text is stored with LF; Git converts on
+# checkout according to the platform.
+* text=auto eol=lf
+
+# Windows-only files: the .iss is consumed by Inno Setup, the .isl is its
+# language file (from the Inno Setup project), the .spec files are Python.
+*.iss text eol=crlf
+*.isl text eol=crlf
+
+# Binary assets must never be line-ending converted.
+*.png binary
+*.ico binary
+*.exe binary
+*.db binary

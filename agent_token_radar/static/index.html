@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- MANDATORY (dark-mode guide): declare supported schemes before first paint -->
+<meta name="color-scheme" content="light dark">
+<title>Agent Token Radar</title>
+<link rel="stylesheet" href="/static/app.css">
+<script defer src="/static/app.js"></script>
+</head>
+<body>
+<a class="skip-link" href="#main" data-i18n="skip">跳到主内容</a>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="mark" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 12h4l2.5-7 3.5 14L16 12h5"/>
+      </svg>
+    </span>
+    <h1 data-i18n="app.title">Agent Token Radar</h1>
+    <span class="tagline" data-i18n="app.tagline">本地 · 只读 · Token 统计与参考费用</span>
+    <span class="dot" aria-hidden="true" title="live"></span>
+  </div>
+
+  <div class="controls">
+    <nav aria-label="Time range" class="ranges" role="group" id="rangeNav" data-i18n-aria="toolbar.range">
+      <button type="button" data-range="today" data-i18n="range.today">今日</button>
+      <button type="button" data-range="7d" aria-pressed="true" data-i18n="range.7d">近 7 天</button>
+      <button type="button" data-range="30d" data-i18n="range.30d">近 30 天</button>
+      <button type="button" data-range="all" data-i18n="range.all">全部</button>
+    </nav>
+
+    <button type="button" id="refreshBtn" class="btn-primary">
+      <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M21 12a9 9 0 1 1-2.64-6.36"/>
+        <path d="M21 3v6h-6"/>
+      </svg>
+      <span data-i18n="toolbar.refresh">刷新扫描</span>
+    </button>
+
+    <label class="auto">
+      <input type="checkbox" id="autoScan" checked>
+      <span><span data-i18n="toolbar.autoscan">自动刷新</span> <span id="intervalLabel">30s</span></span>
+    </label>
+
+    <div class="lang-switch" role="group" id="langSwitch" aria-label="Language">
+      <button type="button" data-lang="zh" aria-pressed="true" lang="zh-CN">中文</button>
+      <button type="button" data-lang="en" aria-pressed="false" lang="en">EN</button>
+    </div>
+  </div>
+
+  <p id="status" class="status" role="status" aria-live="polite" data-i18n="status.loading">正在加载…</p>
+</header>
+
+<main id="main" tabindex="-1">
+  <!-- Summary: one rectangular tile per metric, each showing a single number
+       (the layout this dashboard had before). Cache hit joins the row because
+       it explains why the token total is what it is. -->
+  <section aria-labelledby="cards-title">
+    <h2 id="cards-title" class="section-title" data-i18n="sec.summary">汇总</h2>
+    <div class="cards" id="cards">
+      <article class="card card-total">
+        <h3 data-i18n="card.total">总用量</h3>
+        <p class="value" id="v-total">—</p>
+        <p class="sub" data-i18n="card.total.sub">Total · 全部 Token</p>
+      </article>
+      <article class="card card-hit">
+        <h3 data-i18n="card.cacheHit">缓存命中</h3>
+        <p class="value" id="v-hit">—</p>
+        <p class="sub" data-i18n="card.cacheHit.sub">Cache Hit · 缓存读取占全部输入</p>
+      </article>
+      <article class="card">
+        <h3 data-i18n="card.input">输入</h3>
+        <p class="value" id="v-input">—</p>
+        <p class="sub" data-i18n="card.input.sub">Input · 未走 Cache 的部分</p>
+      </article>
+      <article class="card">
+        <h3 data-i18n="card.output">输出</h3>
+        <p class="value" id="v-output">—</p>
+        <p class="sub" data-i18n="card.output.sub">Output · 由 Model 生成</p>
+      </article>
+      <article class="card">
+        <h3 data-i18n="card.cacheRead">缓存读取</h3>
+        <p class="value" id="v-cache">—</p>
+        <p class="sub" data-i18n="card.cacheRead.sub">Cache Read · 命中缓存的部分</p>
+      </article>
+      <article class="card">
+        <h3 data-i18n="card.reasoning">推理</h3>
+        <p class="value" id="v-reasoning">—</p>
+        <p class="sub" data-i18n="card.reasoning.sub">Reasoning · Output 的细分，不重复计入</p>
+      </article>
+      <!-- Cost is the one card that is NOT a measurement: it multiplies the
+           measured tokens by a published list price. The coverage note says how
+           much of the usage that covers, so a partial sum never reads as the
+           whole bill. It is marked so it cannot be mistaken for a token figure. -->
+      <article class="card card-cost">
+        <h3 data-i18n="card.cost">参考费用</h3>
+        <p class="value" id="v-cost">—</p>
+        <p class="sub" id="v-cost-sub" data-i18n="card.cost.sub">Estimate · 按官方标价估算</p>
+      </article>
+    </div>
+    <p class="note" id="cost-note" data-i18n="summary.note">注：Total = 输入 + 缓存读取 + 缓存写入 + 输出；推理是 Output 的细分项，不重复计入。缓存命中 = 缓存读取 ÷（输入 + 缓存读取）。费用按各厂商官方标价 × Token 估算，不代表实际账单。</p>
+  </section>
+
+  <!-- Trend -->
+  <section aria-labelledby="trend-title">
+    <h2 id="trend-title" class="section-title" data-i18n="sec.trend">消耗趋势（按 Agent 堆叠）</h2>
+    <div class="panel chart-panel">
+      <div id="chartYAxis" class="chart-yaxis" aria-hidden="true"></div>
+      <div id="chartScroller" class="chart-scroller">
+        <canvas id="trendChart" role="img" data-i18n-aria="trend.aria"></canvas>
+      </div>
+      <div id="agentShares" class="agent-shares" hidden></div>
+      <p id="chartFallback" class="chart-fallback" hidden></p>
+      <div id="chartTip" class="chart-tip" hidden></div>
+    </div>
+    <div id="chartLegend" class="chart-legend"></div>
+  </section>
+
+  <!-- Rankings: full width, one table per section. Six numeric columns plus an
+       agent/model name need the whole content width; side by side they collapse
+       into the stacked (mobile) table layout. -->
+  <!-- Cache columns are not shown everywhere on purpose: the cache breakdown
+       explains WHICH agent/model is cache-heavy (a real decision), but on a
+       project or a session it only restates the total. Those two keep
+       Total / Input / Output so the rows stay readable. -->
+  <section aria-labelledby="agent-title">
+    <h2 id="agent-title" class="section-title" data-i18n="sec.byAgent">按 Agent 分布</h2>
+    <div class="table-wrapper" tabindex="0" role="region" aria-labelledby="agent-cap">
+      <table id="agentTable">
+        <caption id="agent-cap" data-i18n="cap.byAgent">各 Agent 的 Token 用量排行</caption>
+        <thead><tr>
+          <th scope="col" data-i18n="col.agent">Agent</th>
+          <th scope="col" class="num" data-i18n="col.events">请求数</th>
+          <th scope="col" class="num" data-i18n="col.total">总量</th>
+          <th scope="col" class="num" data-i18n="col.cacheHit">缓存命中</th>
+          <th scope="col" class="num" data-i18n="col.input">输入</th>
+          <th scope="col" class="num" data-i18n="col.cacheRead">缓存读取</th>
+          <th scope="col" class="num" data-i18n="col.output">输出</th>
+          <th scope="col" class="num" data-i18n="col.cost">参考费用</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section aria-labelledby="model-title">
+    <h2 id="model-title" class="section-title" data-i18n="sec.byModel">按 Agent / Model 细分</h2>
+    <div class="table-wrapper" tabindex="0" role="region" aria-labelledby="model-cap">
+      <table id="modelTable">
+        <caption id="model-cap" data-i18n="cap.byModel">每个 Agent 下各 Model 的 Token 用量</caption>
+        <thead><tr>
+          <th scope="col" data-i18n="col.model">Model</th>
+          <th scope="col" class="num" data-i18n="col.events">请求数</th>
+          <th scope="col" class="num" data-i18n="col.total">总量</th>
+          <th scope="col" class="num" data-i18n="col.cacheHit">缓存命中</th>
+          <th scope="col" class="num" data-i18n="col.input">输入</th>
+          <th scope="col" class="num" data-i18n="col.cacheRead">缓存读取</th>
+          <th scope="col" class="num" data-i18n="col.output">输出</th>
+          <th scope="col" class="num" data-i18n="col.cost">参考费用</th>
+          <th scope="col" class="num" data-i18n="col.unitPrice">单价</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section aria-labelledby="project-title">
+    <h2 id="project-title" class="section-title" data-i18n="sec.byProject">按项目分布</h2>
+    <div class="table-wrapper" tabindex="0" role="region" aria-labelledby="project-cap">
+      <table id="projectTable">
+        <caption id="project-cap" data-i18n="cap.byProject">各项目（Agent 的工作目录）的 Token 用量</caption>
+        <thead><tr>
+          <th scope="col" data-i18n="col.project">项目</th>
+          <th scope="col" data-i18n="col.agent">Agent</th>
+          <th scope="col" class="num" data-i18n="col.events">请求数</th>
+          <th scope="col" class="num" data-i18n="col.total">总量</th>
+          <th scope="col" class="num" data-i18n="col.cacheHit">缓存命中</th>
+          <th scope="col" class="num" data-i18n="col.input">输入</th>
+          <th scope="col" class="num" data-i18n="col.cacheRead">缓存读取</th>
+          <th scope="col" class="num" data-i18n="col.output">输出</th>
+          <th scope="col" class="num" data-i18n="col.cost">参考费用</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p id="projectNote" class="note"></p>
+  </section>
+
+  <!-- Top sessions -->
+  <section aria-labelledby="sessions-title">
+    <h2 id="sessions-title" class="section-title" data-i18n="sec.topSessions">消耗最高的 Top Session</h2>
+    <div class="table-wrapper" tabindex="0" role="region" aria-labelledby="sessions-cap">
+      <table id="sessionTable">
+        <caption id="sessions-cap" data-i18n="cap.topSessions">Token 消耗最高的 Session</caption>
+        <thead><tr>
+          <th scope="col">#</th>
+          <th scope="col" data-i18n="col.session">Session</th>
+          <th scope="col" data-i18n="col.agent">Agent</th>
+          <th scope="col" class="num" data-i18n="col.events">请求数</th>
+          <th scope="col" class="num" data-i18n="col.total">总量</th>
+          <th scope="col" class="num" data-i18n="col.cacheHit">缓存命中</th>
+          <th scope="col" class="num" data-i18n="col.input">输入</th>
+          <th scope="col" class="num" data-i18n="col.output">输出</th>
+          <th scope="col" data-i18n="col.lastSeen">最后活动</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer>
+    <p class="footer-lead" data-i18n="footer.sourcesLead">数据源</p>
+    <ul id="sourceList" class="source-list"></ul>
+    <p id="footerNote" class="footer-caveat" data-i18n="footer.caveat">以上来源均对第三方目录严格只读</p>
+    <p id="providerNote" class="footer-providers"></p>
+    <p id="pricingNote" class="footer-pricing"></p>
+    <p id="peakNote" class="footer-peak"></p>
+    <p id="footerIcons" class="footer-icons" data-i18n="footer.icons">图标均为各 Agent 官方标识（simple-icons 或厂商站点资源）。</p>
+  </footer>
+</main>
+</body>
+</html>

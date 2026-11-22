@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-token-radar"
+version = "0.0.1"
+description = "Local token-usage statistics and reference cost estimates for every AI agent on your machine"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+keywords = ["tokens", "llm", "agents", "usage", "dashboard", "local-first"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Operating System :: OS Independent",
+  "Environment :: Console",
+  "Topic :: Utilities",
+]
+
+[project.urls]
+Homepage = "https://github.com/Zhucy123/agent-token-radar"
+Source = "https://github.com/Zhucy123/agent-token-radar"
+Issues = "https://github.com/Zhucy123/agent-token-radar/issues"
+Changelog = "https://github.com/Zhucy123/agent-token-radar/releases"
+
+# The dashboard is the only part that needs anything beyond the standard
+# library. scan / stats work on a bare Python.
+dependencies = []
+
+[project.optional-dependencies]
+web = ["fastapi>=0.110", "uvicorn>=0.27"]
+# Only needed on Python 3.11-3.13: 3.14 ships compression.zstd in the stdlib.
+zstd = ["zstandard>=0.22; python_version < '3.14'"]
+
+[project.scripts]
+agent-token-radar = "agent_token_radar.cli:main"
+
+[tool.setuptools]
+packages = ["agent_token_radar", "agent_token_radar.adapters"]
+
+[tool.setuptools.package-data]
+# Ship the dashboard assets, the generated icon table and the price table with
+# the package; without this the wheel installs fine and then 404s on
+# /static/app.css and reports every model as unpriced.
+agent_token_radar = ["static/*", "static/**/*", "pricing.json"]
