@@ -23,13 +23,30 @@ Three details here are load-bearing and easy to miss:
 
 * pywebview's own PyInstaller hook provides the native WebView2 assemblies.
   Without it the window fails at runtime with "WebView2 not found".
+
+* ``EXE(version=...)`` must be set. Without it the built exe carried an EMPTY
+  version resource: right-click -> Properties -> Details showed no version, no
+  product name, no publisher. Setup.exe had 0.0.4.0, so the omission hid in
+  plain sight on the file people actually run. Windows file identification,
+  add/remove listings and enterprise allow-listing all read this resource. The
+  number comes from ``agent_token_radar.__version__`` via build/make_version_info.py,
+  not from a literal here, so there is still one source of truth.
 """
 
+import sys
 from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 ROOT = Path(SPECPATH)
+
+# Generate the version resource from the package's own __version__. The
+# generator lives in the package rather than build/, because build/ is
+# gitignored as PyInstaller scratch space.
+sys.path.insert(0, str(ROOT))
+from agent_token_radar._make_version_info import version_file  # noqa: E402
+
+VERSION_RESOURCE = version_file()
 
 datas = [(str(ROOT / "agent_token_radar" / "static"), "agent_token_radar/static")]
 # Official list prices, read from disk at import time by pricing.py.
@@ -58,5 +75,6 @@ pyz = PYZ(a.pure)
 exe = EXE(pyz, a.scripts, [], exclude_binaries=True,
           name="AgentTokenRadar", debug=False, strip=False, upx=False,
           console=False, disable_windowed_traceback=False,
+          version=VERSION_RESOURCE,
           icon=str(ROOT / "build" / "app.ico"))
 coll = COLLECT(exe, a.binaries, a.datas, strip=False, upx=False, name="AgentTokenRadar")
