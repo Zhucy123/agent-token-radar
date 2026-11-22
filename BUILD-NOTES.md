@@ -397,7 +397,7 @@ Unable to save shortcut "C:\ProgramData\Microsoft\Windows\Start Menu\Programs\..
 - [ ] 注册表卸载项存在（`DisplayName` / `DisplayVersion` / `InstallLocation`）
 - [ ] 静默卸载后目录、快捷方式、注册表全清
 - [ ] 卸载后数据库**保留**（重装不丢历史）
-- [ ] 单元测试全过（当前 149 个）
+- [ ] 单元测试全过（当前 166 个）
 
 实测结果：
 
