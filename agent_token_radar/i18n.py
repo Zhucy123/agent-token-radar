@@ -54,6 +54,15 @@ _ZH: dict[str, str] = {
     "toolbar.autoscan": "自动刷新",
     "toolbar.lang": "语言",
     "toolbar.theme": "主题",
+    # Number format. A magnitude suffix is a word, not a proper noun, so the
+    # Chinese UI cannot show "12.4M" -- it uses 万/亿 exactly like the chart
+    # axis does. The toggle therefore reads as "full or shortened", never as
+    # "K or M": that label would be English on a Chinese screen.
+    "toolbar.num": "数字格式",
+    "num.full": "完整",
+    "num.short": "缩写",
+    "num.fullHint": "显示完整的数字，例如 124,855,543。",
+    "num.shortHint": "用万 / 亿缩写，例如 1.25 亿。",
     # Section jump bar. Short labels for the six sections. Domain nouns
     # (Agent / Model / Session / Token) stay in English in both languages;
     # every label still carries Chinese of its own -- "Top Session" was
@@ -236,6 +245,7 @@ _ZH: dict[str, str] = {
     "col.session": "Session",
     "col.lastSeen": "最后活动",
     "empty.table": "暂无数据 —— 请先执行一次扫描",
+    "empty.window": "这段时间没有用量记录",
     "model.unknown": "(未记录 Model)",
     "model.routedFrom": "请求名 {alias}",
     "model.aliasHint": "Agent 日志里记录的是路由别名 {alias}，本机网关实测实际服务的是上面的 Model",
@@ -293,6 +303,11 @@ _EN: dict[str, str] = {
     "toolbar.autoscan": "Auto refresh",
     "toolbar.lang": "Language",
     "toolbar.theme": "Theme",
+    "toolbar.num": "Number format",
+    "num.full": "Full",
+    "num.short": "Short",
+    "num.fullHint": "Show the whole number, e.g. 124,855,543.",
+    "num.shortHint": "Shorten large values, e.g. 124.9M.",
     "nav.sections": "Sections",
     "nav.summary": "Summary",
     "nav.trend": "Trend",
@@ -457,6 +472,7 @@ _EN: dict[str, str] = {
     "col.session": "Session",
     "col.lastSeen": "Last active",
     "empty.table": "No data yet — run a scan first",
+    "empty.window": "No usage recorded in this window",
     "model.unknown": "(no model recorded)",
     "model.routedFrom": "requested as {alias}",
     "model.aliasHint": "The Agent logged the routing alias {alias}; the local gateway measured the Model above as what actually served it",

@@ -23,6 +23,10 @@
     since: null,
     until: null,
     lang: (urlLang || localStorage.getItem("atr.lang") || "zh").toLowerCase().startsWith("en") ? "en" : "zh",
+    // "full" keeps exact figures, "short" abbreviates large ones. Persisted
+    // like the language, because it is a reading preference rather than a
+    // per-window choice: a reader who wants 万/亿 wants it on every visit.
+    numfmt: (localStorage.getItem("atr.numfmt") || "full") === "short" ? "short" : "full",
     chart: null,
     timer: null,
     interval: 30,
@@ -480,7 +484,40 @@
     return out;
   }
 
-  const fmt = (n) => new Intl.NumberFormat(state.lang === "zh" ? "zh-CN" : "en-US").format(Math.trunc(Number(n) || 0));
+  /* Number format. Two modes, chosen in the toolbar:
+       "full"  -- the whole number, grouped: 124,855,543
+       "short" -- one magnitude step, one decimal: 1.2亿 / 124.9M
+     The suffix follows the UI language, like the chart axis does: a magnitude
+     word ("万"/"亿") is not a proper noun, so a Chinese screen must not print
+     "124.9M". In English the same switch reads K/M/B.
+
+     Rounding is deliberately NOT applied to the full form -- that is the whole
+     point of the mode: it exists so an exact figure is always reachable. */
+  const NUM_UNITS = {
+    zh: [[1e8, "亿"], [1e4, "万"]],
+    en: [[1e9, "B"], [1e6, "M"], [1e3, "K"]],
+  };
+
+  function fmtShort(n) {
+    const v = Math.trunc(Number(n) || 0);
+    const sign = v < 0 ? "-" : "";
+    const abs = Math.abs(v);
+    for (const [step, suffix] of (NUM_UNITS[state.lang] || NUM_UNITS.en)) {
+      if (abs >= step) {
+        // One decimal, but drop a trailing ".0": "1.2亿" reads fine while
+        // "1.0亿" reads like a rounding error.
+        const q = (abs / step).toFixed(1).replace(/\.0$/, "");
+        return sign + q + suffix;
+      }
+    }
+    // Below the smallest step the short form would be the full form with no
+    // suffix, so print it grouped instead of ungrouped.
+    return new Intl.NumberFormat(state.lang === "zh" ? "zh-CN" : "en-US").format(v);
+  }
+
+  const fmt = (n) => (state.numfmt === "short"
+    ? fmtShort(n)
+    : new Intl.NumberFormat(state.lang === "zh" ? "zh-CN" : "en-US").format(Math.trunc(Number(n) || 0)));
   const short = (s, n = 34) => (s && s.length > n ? s.slice(0, n - 1) + "…" : (s || "—"));
   const time = (ms) => (ms
     ? new Date(Number(ms)).toLocaleString(state.lang === "zh" ? "zh-CN" : "en-US", { hour12: false })
@@ -680,7 +717,46 @@
         : t("card.cost.sub");
       subEl.title = t("cost.coverageTip");
     }
+
+    // The cards are fixed-width grid tracks, so a long figure has to fit inside
+    // one -- see fitCardNumbers.
+    fitCardNumbers();
   }
+
+  /* Shrink any card number that is wider than its card.
+   *
+   * The container-query font size in CSS handles the ordinary case (the digits
+   * scale with the card). This is the guarantee behind it: whatever the CSS
+   * resolves to, a number that would still be clipped is measured and reduced
+   * until it fits, and every number is reset to the CSS size first so a short
+   * value after a long one does not inherit the smaller type.
+   *
+   * Shrinking beats wrapping here: the total is the headline of the page and a
+   * two-line number reads as a bug. `min` keeps a pathological value legible
+   * rather than vanishing.
+   */
+  const MIN_CARD_FONT_PX = 9;
+
+  function fitCardNumbers() {
+    for (const el of document.querySelectorAll("#cards .card .value")) {
+      // Reset first: the measurement below must reflect the CSS size, not a
+      // size left behind by the previous value.
+      el.style.fontSize = "";
+      const avail = el.clientWidth;
+      if (!avail) continue;                 // hidden (e.g. a collapsed panel)
+      const need = el.scrollWidth;
+      if (need <= avail + 1) continue;      // 1px absorbs sub-pixel rounding
+      const current = parseFloat(getComputedStyle(el).fontSize) || 16;
+      // 0.97 leaves a hair of slack so rounding cannot land exactly on the edge.
+      const next = Math.max(MIN_CARD_FONT_PX, current * (avail / need) * 0.97);
+      el.style.fontSize = `${next.toFixed(2)}px`;
+    }
+  }
+
+  // Test hook, like __lastTrend/__lastData: a script that writes a number
+  // straight into the DOM bypasses the render path, so it must be able to ask
+  // for the same fit the app performs. Nothing in the app reads this.
+  window.__fitCardNumbers = fitCardNumbers;
 
   /** A USD amount, small values keeping enough digits to stay meaningful. */
   function money(value) {
@@ -764,7 +840,7 @@
       td.className = "empty";
       // 1 name column + events/total/hit/uncached/cache-read/output
       td.colSpan = 7;
-      td.textContent = t("empty.table");
+      td.textContent = emptyTableText();
       tr.appendChild(td);
       tbody.appendChild(tr);
       return;
@@ -982,6 +1058,22 @@
    * keeps the NULL -> dash meaning ("no published price"), which a plain
    * toFixed would destroy.
    */
+  /**
+   * What an empty table should say.
+   *
+   * "No data yet -- run a scan first" is right on a fresh install and WRONG
+   * after picking a day with no usage: the scan already ran, the promise was
+   * just "this window holds nothing". Telling an already-scanned user to scan
+   * again sends them to a button that will change nothing.
+   *
+   * `db_rows` is the whole-library count, so it answers "has anything ever been
+   * scanned" independently of the window being viewed.
+   */
+  function emptyTableText() {
+    const everScanned = Number((state.data && state.data.db_rows) || 0) > 0;
+    return everScanned ? t("empty.window") : t("empty.table");
+  }
+
   function fillTable(tableId, headers, rows, numericFrom, firstIsAgent = false,
                      agentCol = -1, moneyCol = -1) {
     const tbody = $(tableId).querySelector("tbody");
@@ -991,7 +1083,7 @@
       const td = document.createElement("td");
       td.className = "empty";
       td.colSpan = headers.length;
-      td.textContent = t("empty.table");
+      td.textContent = emptyTableText();
       tr.appendChild(td);
       tbody.appendChild(tr);
       return;
@@ -1111,7 +1203,7 @@
       const td = document.createElement("td");
       td.className = "empty";
       td.colSpan = headers.length;
-      td.textContent = t("empty.table");
+      td.textContent = emptyTableText();
       tr.appendChild(td);
       tbody.appendChild(tr);
     } else {
@@ -1468,6 +1560,62 @@
   }
 
   /**
+   * The no-data state of the trend section.
+   *
+   * Everything the previous render left behind has to be cleared, not just the
+   * canvas: the legend names Agents with totals, the y-axis strip holds tick
+   * labels, and the one-day share list keeps its rows. Leaving any of them made
+   * an empty window look like it was still showing the old selection -- the
+   * numbers were stale, which is worse than showing nothing. A reader cannot
+   * tell a fossil from live data.
+   *
+   * The ResizeObserver matters too: it captures `draw` for the OLD days array,
+   * so ~120ms after this it would repaint the old bars straight back over the
+   * empty state.
+   */
+  function renderChartEmpty(fallback) {
+    const canvas = $("trendChart");
+    const shares = $("agentShares");
+    const legend = $("chartLegend");
+    const tip = $("chartTip");
+    const yaxis = $("chartYAxis");
+
+    if (state._chartObserver) {
+      state._chartObserver.disconnect();
+      state._chartObserver = null;
+    }
+    if (canvas) {
+      canvas.hidden = true;
+      // Drop the hit-test handlers with the data: a stale canvas would still
+      // answer a click with a day that is no longer on screen.
+      canvas.onclick = null;
+      canvas.onmousemove = null;
+      canvas.onmouseleave = null;
+      canvas.removeAttribute("title");
+      canvas.removeAttribute("aria-description");
+      canvas.style.cursor = "default";
+    }
+    if (shares) { shares.hidden = true; shares.replaceChildren(); }
+    if (legend) legend.replaceChildren();
+    if (yaxis) yaxis.replaceChildren();
+    if (tip) {
+      tip.hidden = true;
+      // The tooltip is positioned with inline left/top from the last hover.
+      // Hidden, those coordinates are invisible -- but they would place a
+      // correctly-hidden box at a stale spot the moment anything un-hides it,
+      // so clear them with the data they described.
+      tip.style.left = "";
+      tip.style.top = "";
+    }
+    const title = $("trend-title");
+    if (title) title.textContent = t("sec.trend");
+    if (fallback) {
+      fallback.hidden = false;
+      fallback.textContent = t("trend.noData");
+    }
+  }
+
+  /**
    * The one-bucket case ("today", or a range that contains a single day).
    *
    * A bar chart needs a time axis. With one bucket it degenerates into a single
@@ -1496,6 +1644,8 @@
     // every one of them.
     const legend = $("chartLegend");
     if (legend) legend.replaceChildren();
+    const yaxis = $("chartYAxis");
+    if (yaxis) yaxis.replaceChildren();
 
     const day = trend.days[0];
     const rows = (trend.agents || [])
@@ -1508,14 +1658,7 @@
       .sort((x, y) => y.value - x.value);
 
     if (!rows.length) {
-      shares.hidden = true;
-      canvas.hidden = true;
-      // Fall through with the share heading already applied, or the section
-      // would keep saying "by Agent" while showing "no data".
-      const t0 = $("trend-title");
-      if (t0) t0.textContent = t("sec.trendShare");
-      fallback.hidden = false;
-      fallback.textContent = t("trend.noData");
+      renderChartEmpty(fallback);
       return;
     }
 
@@ -1572,9 +1715,7 @@
     const agents = trend.agents || [];
 
     if (!days.length || !agents.length) {
-      canvas.hidden = true;
-      fallback.hidden = false;
-      fallback.textContent = t("trend.noData");
+      renderChartEmpty(fallback);
       return;
     }
 
@@ -2268,6 +2409,36 @@
     }
   }
 
+  /* Switch the number format. Everything that prints a count has to be
+     repainted -- cards, tables, chart legend/axis and the status line all bake
+     the string at render time, so a CSS-only change cannot reach any of them.
+     The chart is redrawn because its axis and tooltip carry numbers too. */
+  function setNumFmt(mode) {
+    const next = mode === "short" ? "short" : "full";
+    if (state.numfmt === next) return;
+    state.numfmt = next;
+    try { localStorage.setItem("atr.numfmt", next); } catch { /* private mode */ }
+    syncNumButtons();
+    if (state.data) {
+      renderCards(state.data.totals || {});
+      renderTables(state.data);
+      renderChart(state.trend || { days: [], agents: [], series: {} });
+      // The hint explains what the two modes mean, so it follows the choice.
+      setStatus(t("status.loaded", {
+        rows: fmt(state.data.db_rows),
+        time: time(state.data.generated_at),
+      }));
+    }
+  }
+
+  function syncNumButtons() {
+    const nav = $("numSwitch");
+    if (!nav) return;
+    for (const b of nav.querySelectorAll("button")) {
+      b.setAttribute("aria-pressed", String(b.dataset.numfmt === state.numfmt));
+    }
+  }
+
   /** Apply one concrete day, which is what a chart click means. */
   function pickDay(day) {
     if (!day) return;
@@ -2423,6 +2594,10 @@
     if (state._hintKind) setHint(state._hintKind);
     // Re-render with the new language (tables carry translated headers).
     if (state.data) {
+      // Cards included: in "short" mode the magnitude suffix is a WORD, so a
+      // switch between 万/亿 and K/M/B changes every card too. Leaving them
+      // alone printed "1.2亿" on the cards of an English page.
+      renderCards(state.data.totals || {});
       renderTables(state.data);
       renderFooter();
       renderChart(state.trend || { days: [], agents: [], series: {} });
@@ -2882,6 +3057,27 @@
       renderChart(state.trend || { days: [], agents: [], series: {} });
     });
 
+    // A resize changes how many cards share a row, so the width available to
+    // each one changes too. Without this, a number that fitted at 1920px is
+    // still rendered at its old size after the window narrows, and gets cut.
+    // Debounced via rAF: one pass per frame however fast the drag is.
+    if ("ResizeObserver" in window) {
+      let pending = 0;
+      const refit = () => {
+        if (pending) return;
+        pending = requestAnimationFrame(() => {
+          pending = 0;
+          fitCardNumbers();
+        });
+      };
+      const cardsEl = $("cards");
+      if (cardsEl) {
+        state._cardObserver = new ResizeObserver(refit);
+        state._cardObserver.observe(cardsEl);
+      }
+      window.addEventListener("resize", refit, { passive: true });
+    }
+
     await setLang(state.lang);
 
     try {
@@ -2911,6 +3107,12 @@
       const btn = ev.target.closest("button[data-lang]");
       if (btn && btn.dataset.lang !== state.lang) setLang(btn.dataset.lang);
     });
+
+    $("numSwitch")?.addEventListener("click", (ev) => {
+      const btn = ev.target.closest("button[data-numfmt]");
+      if (btn) setNumFmt(btn.dataset.numfmt);
+    });
+    syncNumButtons();
 
     $("refreshBtn").addEventListener("click", refresh);
     $("autoScan").addEventListener("change", (ev) => {

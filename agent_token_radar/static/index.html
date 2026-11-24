@@ -146,6 +146,18 @@
       <button type="button" data-lang="en" aria-pressed="false" lang="en">EN</button>
     </div>
 
+    <!-- Full vs shortened token counts. A segmented pair rather than a checkbox:
+         the two states are peers, and the selected one stays visible, so the
+         reader can tell which format the numbers below are in without hovering
+         anything. The shortened form follows the UI language (万/亿 in Chinese,
+         K/M/B in English) -- see fmtShort in app.js for why. -->
+    <div class="num-switch" role="group" id="numSwitch" aria-label="数字格式" data-i18n-aria="toolbar.num">
+      <button type="button" data-numfmt="full" aria-pressed="true"
+              data-i18n="num.full" data-i18n-title="num.fullHint">完整</button>
+      <button type="button" data-numfmt="short" aria-pressed="false"
+              data-i18n="num.short" data-i18n-title="num.shortHint">缩写</button>
+    </div>
+
     <!-- Update check lives in the toolbar, not behind Settings: it is something
          you glance at, not a preference you configure.
          The control shows the running VERSION rather than an icon. An icon here

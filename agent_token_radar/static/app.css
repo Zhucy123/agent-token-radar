@@ -278,9 +278,9 @@
     margin-inline-start: auto;
   }
 
-  /* Segmented control (range + language). One shared look: a sunken track
-     with a raised selected segment. */
-  .ranges, .lang-switch {
+  /* Segmented control (range + language + number format). One shared look: a
+     sunken track with a raised selected segment. */
+  .ranges, .lang-switch, .num-switch {
     display: flex;
     gap: 2px;
     padding: 3px;
@@ -288,7 +288,7 @@
     border: 1px solid var(--hairline);
     border-radius: 10px;
   }
-  .ranges button, .lang-switch button {
+  .ranges button, .lang-switch button, .num-switch button {
     border: 0;
     background: transparent;
     color: var(--muted);
@@ -301,9 +301,9 @@
     transition: background 120ms ease, color 120ms ease, box-shadow 120ms ease;
   }
   .ranges button { padding: var(--space-2) var(--space-3); font-size: var(--text-base); }
-  .lang-switch button { padding: var(--space-1) var(--space-2); font-size: var(--text-sm); letter-spacing: .02em; }
-  .ranges button:hover, .lang-switch button:hover { color: var(--ink-ui, var(--text)); }
-  :where(.ranges, .lang-switch) button[aria-pressed="true"] {
+  .lang-switch button, .num-switch button { padding: var(--space-1) var(--space-2); font-size: var(--text-sm); letter-spacing: .02em; }
+  .ranges button:hover, .lang-switch button:hover, .num-switch button:hover { color: var(--ink-ui, var(--text)); }
+  :where(.ranges, .lang-switch, .num-switch) button[aria-pressed="true"] {
     background: var(--surface-raised);
     color: var(--brand);
     box-shadow: var(--shadow-1);
@@ -1012,12 +1012,18 @@
   }
 
   /* ---------- metric cards ---------- */
+  /* Equal-width tracks, NOT content-sized ones. A card that grows with its own
+     number makes the row ragged (measured: widths 216/230/248/261/214/228/288)
+     and, with `flex-grow`, stretches the last card of a short row across the
+     whole line (measured: one card at 1422px of 1422px). A grid keeps every row
+     tidy and every card the same width.
+
+     The number then has to fit INSIDE a fixed width, which is what the
+     container query below plus fitCardNumbers() guarantee -- see the comment on
+     .card .value. */
   .cards {
     display: grid;
-    /* auto-fit + minmax keeps 6 cards on one row when there is room, 3 on a
-       laptop, 2 on a tablet and 1 on a phone, with no media queries. The floor
-       is small enough that a 320px phone still fits one column. */
-    grid-template-columns: repeat(auto-fit, minmax(min(11rem, 100%), 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
     gap: var(--space-3);
   }
   .card {
@@ -1028,6 +1034,15 @@
     padding: var(--space-4) var(--space-5);
     box-shadow: var(--shadow-1);
     overflow: hidden;
+    /* A grid item's automatic minimum size is its content, so the card cannot
+       be squeezed below its number -- but `overflow: hidden` makes it a scroll
+       container and zeroes that floor. State it explicitly. */
+    min-inline-size: 0;
+    /* The number's size is resolved against THIS box, not the viewport: at 7
+       cards per row the card is ~200px wide no matter how wide the window is,
+       so a vw-based clamp grew the type exactly when there was no room for it
+       (measured: 24.5px type for a 162px number in a 159px card, cropped). */
+    container-type: inline-size;
     transition: box-shadow 160ms ease, transform 160ms ease,
                 border-color 160ms ease;
   }
@@ -1045,11 +1060,15 @@
     letter-spacing: .06em;
     text-wrap: balance;
   }
-  /* The number is the point of the card, so it owns the scale. no-wrap keeps
-     13-digit token sums on one line; the clamp shrinks them to fit instead. */
+  /* The number is the point of the card, so it owns the scale. `nowrap` keeps a
+     grouped figure on one line. `cqi` is 1% of the card's CONTENT box; the
+     preferred 22cqi lands on the 1.625rem ceiling for any normal card, so the
+     headline keeps its full design size and fitCardNumbers() shrinks only the
+     figures that genuinely do not fit. Sizing purely by cqi would have kept the
+     number at ~13.6px, which loses the visual hierarchy the card exists for. */
   .card .value {
     margin: var(--space-2) 0 2px;
-    font-size: var(--fs-metric);
+    font-size: clamp(0.85rem, 22cqi, 1.625rem);
     font-weight: calc(700 * var(--fw-scale, 1));
     letter-spacing: -.03em;
     font-variant-numeric: tabular-nums;
@@ -1140,6 +1159,20 @@
   }
   .chart-panel:has(#agentShares:not([hidden])) .chart-yaxis,
   .chart-panel:has(#agentShares:not([hidden])) .chart-scroller { display: none; }
+
+  /* The no-data state has the same problem the share list had, and worse: the
+     panel is a flex row, so the note was pushed to the far right past the axis
+     strip and the (now empty) scroller, and the panel kept its full chart
+     height -- a blank 21rem box with one word floating in it. Collapse the
+     panel to the note's own height and drop the chart furniture. */
+  .chart-panel:has(#chartFallback:not([hidden])) {
+    display: block;
+    padding: var(--space-4);
+    block-size: auto;
+  }
+  .chart-panel:has(#chartFallback:not([hidden])) .chart-yaxis,
+  .chart-panel:has(#chartFallback:not([hidden])) .chart-scroller { display: none; }
+  .chart-panel:has(#chartFallback:not([hidden])) .chart-fallback { margin: 0; }
 
   .agent-shares { inline-size: 100%; }
   .shares-head {
@@ -1576,7 +1609,7 @@
 
   /* ---------- coarse pointers (form-factor-adaptation) ---------- */
   @media (pointer: coarse) {
-    .ranges button, .lang-switch button { min-block-size: 2.75rem; padding-inline: var(--space-3); }
+    .ranges button, .lang-switch button, .num-switch button { min-block-size: 2.75rem; padding-inline: var(--space-3); }
     .btn-primary { min-block-size: 2.75rem; }
     /* Icon-only controls and the settings rows are touch targets too. */
     .btn-icon-only, .settings-close { inline-size: 2.75rem; block-size: 2.75rem; }
@@ -1621,6 +1654,19 @@
 
 /* ========================================================== utilities */
 @layer utilities {
+  /* The HTML `hidden` attribute has to win over a component's own `display`.
+     The browser default is `[hidden] { display: none }` in the UA sheet, and
+     ANY author rule that sets display beats it -- `.chart-panel canvas {
+     display: block }` did exactly that, so `canvas.hidden = true` (the empty
+     state) left the previous chart painted on screen.
+
+     Two guards, both needed (each was measured in a real browser):
+       - the last @layer beats every other LAYERED rule on the same element;
+       - `!important` covers an UNLAYERED one -- without it, re-adding a plain
+         `.chart-panel canvas { display: block }` outside any layer puts
+         `display: block` back and the stale chart returns. */
+  [hidden] { display: none !important; }
+
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after {
       animation: none !important;

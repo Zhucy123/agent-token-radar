@@ -310,6 +310,73 @@ def main() -> int:
             check(f"{key} touch target", h >= 44, True)
         b.js("document.getElementById('dateBtn').click()")
         b.cdp.call("Emulation.setTouchEmulationEnabled", enabled=False)
+
+        print("\n10. 选到没有数据的日期：整页必须是空的，不能留着上一次的图")
+        # The bug this pins: the API returned `days: []` correctly, but the page
+        # kept the PREVIOUS selection's chart, legend and y-axis on screen. Only
+        # a browser can show that, and only if it asserts the parts are EMPTY --
+        # checking that the canvas was marked hidden proved nothing, because
+        # `.chart-panel canvas { display: block }` beat the UA [hidden] rule.
+        b.js("document.querySelector('#langSwitch button[data-lang=\"zh\"]').click()")
+        time.sleep(1.6)
+        # 2026-11-01 is a real day with no usage in this database.
+        b.js("""(() => {
+          document.getElementById('dateBtn').click();
+          const a = document.getElementById('dateFrom');
+          const z = document.getElementById('dateTo');
+          a.value = '2026-11-01'; z.value = '2026-11-01';
+          a.dispatchEvent(new Event('input', {bubbles:true}));
+          z.dispatchEvent(new Event('input', {bubbles:true}));
+          document.getElementById('dateApply').click();
+        })()""")
+        time.sleep(2.2)
+        check("empty window returned no days",
+              b.js("(window.__lastTrend && window.__lastTrend.days.length)"), 0)
+        check("no-data note is shown",
+              b.js("document.getElementById('chartFallback').hidden"), False)
+        empty = b.js("""(() => {
+          const c = document.getElementById('trendChart');
+          return {
+            canvas_visible: !!c.offsetParent,
+            legend_items: document.getElementById('chartLegend').children.length,
+            yaxis_ticks: document.getElementById('chartYAxis').children.length,
+            share_rows: (document.getElementById('agentShares')
+              .querySelectorAll('.share-row') || []).length,
+            panel_h: Math.round(document.querySelector('.chart-panel')
+              .getBoundingClientRect().height),
+          };
+        })()""")
+        print(f"       empty state = {empty}")
+        check("old canvas is not visible", empty["canvas_visible"], False)
+        check("legend is emptied (no stale Agent totals)",
+              empty["legend_items"], 0)
+        check("y-axis is emptied (no stale tick labels)",
+              empty["yaxis_ticks"], 0)
+        check("share rows are emptied", empty["share_rows"], 0)
+        # The panel must collapse to the note, not keep the chart's 21rem.
+        check("panel collapsed to the note", empty["panel_h"] < 100, True)
+        check("table says this window is empty, not 'run a scan'",
+              b.js("""(() => {
+                const txt = (document.querySelector('#agentTable tbody')||{}).innerText || '';
+                return txt.includes('这段时间没有用量记录');
+              })()"""), True)
+
+        print("\n11. 回到有数据的范围，图表要完整回来")
+        b.js("document.getElementById('dateClear').click()")
+        time.sleep(2.2)
+        back = b.js("""(() => ({
+          days: (window.__lastTrend && window.__lastTrend.days.length) || -1,
+          canvas_visible: !!document.getElementById('trendChart').offsetParent,
+          legend_items: document.getElementById('chartLegend').children.length,
+          yaxis_ticks: document.getElementById('chartYAxis').children.length,
+          rows: document.querySelectorAll('#agentTable tbody tr').length,
+        }))()""")
+        print(f"       restored = {back}")
+        check("seven bars again", back["days"], 7)
+        check("canvas visible again", back["canvas_visible"], True)
+        check("legend rebuilt", back["legend_items"] > 0, True)
+        check("y-axis rebuilt", back["yaxis_ticks"] > 0, True)
+        check("table rows back", back["rows"] >= 3, True)
     finally:
         b.close()
 

@@ -240,6 +240,45 @@ repeated scan upserts instead of double-counting.
 
 ## Changelog
 
+### 0.0.5
+
+**Added**
+
+- **Yesterday**: a new **Yesterday** button sits beside Today, Last 7 days and
+  the rest of the presets.
+- **Pick any date range**: the date button always spells out the window on screen
+  (for example "11-18 to 11-24"); clicking it opens a picker for any start and
+  end, or a single day. Applying a custom range clears the preset buttons, so
+  "Last 7 days" is never lit while the chart shows three days.
+- **Click a day in the trend chart to focus on it**: anywhere in that day's
+  column counts, not just the bar, and the date button updates to that day.
+- **Full or shortened numbers**: a new toolbar switch. **Full** shows the exact
+  figure (`2,967,603,835`); **Short** abbreviates with 万/亿 in Chinese or
+  K/M/B in English, following the interface language. The choice is remembered
+  across reloads.
+
+**Fixed**
+
+- **Picking a window with no data left the previous chart and tables on screen.**
+  The legend, y-axis ticks, share list and bars are now cleared, and the table
+  says this window is empty instead of suggesting a rescan — the scan has already
+  run.
+- **Long numbers in the summary cards were cropped.** Two causes: the type size
+  grew with the window while seven cards share ~190px each, and the card's own
+  `overflow: hidden` zeroed its minimum width so a long number could not widen
+  it. Cards are now equal-width and tidy, and a figure that still does not fit is
+  shrunk inside its own card — never cropped, and never forcing a horizontal
+  scrollbar.
+- **"Yesterday" used to return the whole history** (92 days, ~81k events),
+  because the backend did not recognise the range and silently fell back to
+  "all". Unknown ranges are now reported as an error instead.
+
+**Note**
+
+- The CLI's `--range` accepts `yesterday` too, matching the dashboard.
+- On a language switch, the card suffixes, the date label and the picker's
+  validation message all follow the new language.
+
 ### 0.0.4
 
 **Added**
