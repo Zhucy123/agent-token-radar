@@ -309,6 +309,140 @@
     box-shadow: var(--shadow-1);
   }
 
+  /* ---- date window -------------------------------------------------------
+     The button states the exact span on screen ("11-18 至 11-24"), because a
+     preset label cannot say WHICH seven days. An explicit custom window takes
+     the accent colour so it is visibly different from a preset and the reader
+     knows why none of the preset segments is lit. */
+  .date-wrap { position: relative; display: inline-flex; }
+
+  .date-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--hairline);
+    border-radius: 10px;
+    background: var(--surface-sunken);
+    color: var(--muted);
+    font: inherit;
+    font-size: var(--text-base);
+    font-weight: calc(600 * var(--fw-scale, 1));
+    cursor: pointer;
+    /* Tabular digits: the label changes width every day, and a proportional
+       font makes the whole toolbar shift when it does. */
+    font-variant-numeric: tabular-nums;
+    transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
+  }
+  .date-btn:hover { color: var(--ink-ui, var(--text)); border-color: var(--line); }
+  .date-btn[aria-expanded="true"] {
+    color: var(--brand);
+    border-color: color-mix(in oklab, var(--brand) 45%, var(--line));
+    background: var(--surface-raised);
+  }
+  .date-btn:focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
+  }
+  .date-icon { inline-size: 1em; block-size: 1em; flex: none; }
+  /* A custom window is not a preset, so mark it: colour alone is not enough
+     (forced-colors mode drops it), hence the dot too. */
+  #dateLabel[data-custom] { color: var(--brand); }
+  #dateLabel[data-custom]::before {
+    content: "";
+    display: inline-block;
+    inline-size: .4em;
+    block-size: .4em;
+    margin-inline-end: .45em;
+    border-radius: 50%;
+    background: currentColor;
+    vertical-align: middle;
+  }
+
+  .date-panel {
+    position: absolute;
+    inset-block-start: calc(100% + var(--space-2));
+    inset-inline-start: 0;
+    z-index: 40;
+    inline-size: min(21rem, calc(100vw - 2rem));
+    padding: var(--space-4);
+    background: var(--surface-raised);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-md, 12px);
+    box-shadow: var(--shadow-2);
+  }
+  .date-title {
+    margin: 0 0 var(--space-3);
+    font-size: var(--text-sm);
+    font-weight: calc(700 * var(--fw-scale, 1));
+    color: var(--text);
+  }
+  .date-fields {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-3);
+  }
+  .date-field {
+    display: grid;
+    gap: var(--space-1);
+    font-size: var(--text-sm);
+    color: var(--muted);
+  }
+  .date-field input {
+    inline-size: 100%;
+    padding: var(--space-2);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--text);
+    font: inherit;
+    font-size: var(--text-base);
+    font-variant-numeric: tabular-nums;
+  }
+  .date-field input:focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 1px;
+  }
+  .date-hint {
+    margin: var(--space-2) 0 0;
+    font-size: var(--text-sm);
+    color: var(--muted);
+    min-block-size: 1.2em;   /* reserve the line so the panel never jumps */
+  }
+  .date-actions {
+    display: flex;
+    gap: var(--space-2);
+    margin: var(--space-3) 0 0;
+  }
+  .date-apply {
+    border: 1px solid color-mix(in oklab, var(--brand) 70%, var(--line));
+    background: var(--brand);
+    /* Same contrast reasoning as .btn-primary: the dark theme's brand is light,
+       so its label has to be dark. */
+    color: var(--on-brand, #fff);
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-sm);
+    font: inherit;
+    font-size: var(--text-base);
+    font-weight: calc(600 * var(--fw-scale, 1));
+    cursor: pointer;
+  }
+  .date-clear {
+    border: 1px solid var(--hairline);
+    background: transparent;
+    color: var(--muted);
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-sm);
+    font: inherit;
+    font-size: var(--text-base);
+    cursor: pointer;
+  }
+  .date-clear:hover { color: var(--ink-ui, var(--text)); border-color: var(--line); }
+  .date-apply:focus-visible, .date-clear:focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
+  }
+
   .btn-primary {
     display: inline-flex;
     align-items: center;
@@ -1453,6 +1587,10 @@
        was left at its 32px desktop size while every other control grew to
        44px on touch. 2.75rem = 44px at the default root size. */
     .project-toggle { min-inline-size: 2.75rem; min-block-size: 2.75rem; }
+    /* The date controls measured 38-40px against 44px for everything else:
+       they were added after this block and were not on its list. */
+    .date-btn, .date-apply, .date-clear { min-block-size: 2.75rem; }
+    .date-field input { min-block-size: 2.75rem; }
   }
 
   /* ---------- high contrast ---------- */

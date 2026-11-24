@@ -18,6 +18,10 @@
   if (isAppWindow) document.documentElement.dataset.shell = "app";
   const state = {
     range: new URLSearchParams(location.search).get("range") || "7d",
+    // An explicit window wins over the preset above. `since`/`until` are local
+    // YYYY-MM-DD strings; both inclusive. A chart click sets both to one day.
+    since: null,
+    until: null,
     lang: (urlLang || localStorage.getItem("atr.lang") || "zh").toLowerCase().startsWith("en") ? "en" : "zh",
     chart: null,
     timer: null,
@@ -1642,6 +1646,7 @@
       const layout = drawStackedBars(ctx, cssW, cssH, days, series, trend.unit || "day");
       renderLegend(series);
       bindTooltip(canvas, ctx, cssW, cssH, days, series, layout);
+      bindChartClick(canvas, days, layout);
 
       // When the plot is wider than the viewport, the newest data is on the
       // RIGHT -- which is where a reader of "all time" wants to land, not at
@@ -1693,6 +1698,57 @@
       item.appendChild(label);
       box.appendChild(item);
     }
+  }
+
+  /**
+   * Click a bar to focus that day.
+   *
+   * The hit test is the SLOT, not the painted rectangle. A bar is only ~56px of
+   * a slot that can be 190px or more, so testing `box.x .. box.x + box.w` left
+   * two thirds of every column dead to the mouse -- measured at 36% coverage on
+   * a 7-day window. Widening the painted box by a few pixels did not fix that;
+   * mapping the pointer to an index does.
+   *
+   * Weekly and monthly buckets are skipped on purpose: their key is the
+   * bucket's START day, so "click 11-18" on a weekly axis would silently select
+   * a day the bar does not represent.
+   */
+  function bindChartClick(canvas, days, layout) {
+    const unit = (state.trend && state.trend.unit) || "day";
+    canvas.style.cursor = unit === "day" ? "pointer" : "default";
+    // The canvas is a mouse target only. Say so in its accessible name, or a
+    // screen-reader user is told it is a picture while it is also a control --
+    // and the date button is the equivalent they should use instead.
+    if (unit === "day") {
+      canvas.title = t("range.chartHint");
+      canvas.setAttribute("aria-description", t("range.chartHint"));
+    } else {
+      canvas.removeAttribute("title");
+      canvas.removeAttribute("aria-description");
+    }
+    canvas.onclick = (ev) => {
+      if (unit !== "day") return;
+      const r = canvas.getBoundingClientRect();
+      const mx = ev.clientX - r.left;
+      const my = ev.clientY - r.top;
+
+      // Inside the plot area only: a click on the axis labels or the margin
+      // below the bars is not a day selection.
+      if (mx < layout.padL || mx > layout.padL + layout.plotW) return;
+      if (my < layout.padT || my > layout.padT + layout.plotH) return;
+
+      // Same slot width drawStackedBars uses, so the column the reader sees is
+      // exactly the column that responds.
+      const slot = layout.plotW / Math.max(1, days.length);
+      const index = Math.floor((mx - layout.padL) / slot);
+      if (index < 0 || index >= days.length) return;
+
+      const day = days[index];
+      // Only a real calendar day can be selected; a bucket key that is not an
+      // ISO date would produce a nonsense request.
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(day || "")) return;
+      pickDay(day);
+    };
   }
 
   function bindTooltip(canvas, ctx, cssW, cssH, days, series, layout) {
@@ -2099,18 +2155,38 @@
 
   /* ------------------------------------------------------------------ data */
 
+  /** The query string for the active window: a preset, or explicit dates. */
+  function rangeQuery() {
+    let q = `range=${encodeURIComponent(state.range)}`;
+    if (state.since || state.until) {
+      q = "range=custom";
+      if (state.since) q += `&since=${encodeURIComponent(state.since)}`;
+      if (state.until) q += `&until=${encodeURIComponent(state.until)}`;
+    }
+    return q;
+  }
+
   async function load() {
     try {
+      const q = rangeQuery();
       const [overview, trend] = await Promise.all([
-        api(`/api/overview?range=${encodeURIComponent(state.range)}`),
-        api(`/api/trend?range=${encodeURIComponent(state.range)}`),
+        api(`/api/overview?${q}`),
+        api(`/api/trend?${q}`),
       ]);
       state.data = overview;
       state.trend = trend;
+      // Read-only handles for scripts/verify_date_window.py. The date window's
+      // behaviour is interaction, and asserting on the DOM alone cannot tell
+      // how many days the chart was built from -- which is how a 「昨天」 that
+      // returned the entire history passed a check that only looked at the
+      // button. Test hook only: nothing in the app reads these.
+      window.__lastTrend = trend;
+      window.__lastData = overview;
       renderCards(overview.totals || {});
       renderTables(overview);
       renderChart(trend);
       renderFooter();
+      renderDateLabel();
       setStatus(t("status.loaded", { rows: fmt(overview.db_rows), time: time(overview.generated_at) }));
     } catch (e) {
       setStatus(t("status.loadFailed", { err: e.message }));
@@ -2131,6 +2207,201 @@
     }
   }
 
+  /* ------------------------------------------------------------- date window
+
+     Two things read the same state: the button label always states the exact
+     window on screen, and the picker edits that window. Keeping the label
+     derived from the SAME values the request uses means "近 7 天" can never sit
+     above a chart that actually shows eight days. */
+
+  /** Today at local midnight, as YYYY-MM-DD. */
+  function localDay(offsetDays = 0) {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() + offsetDays);
+    const p = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  }
+
+  /** The inclusive day span a preset covers, so the label can spell it out. */
+  function presetSpan(rng) {
+    switch (rng) {
+      case "today": return [localDay(0), localDay(0)];
+      case "yesterday": return [localDay(-1), localDay(-1)];
+      case "7d": return [localDay(-6), localDay(0)];
+      case "30d": return [localDay(-29), localDay(0)];
+      default: return null;                 // "all" has no bounded span
+    }
+  }
+
+  /** MM-DD, dropping the year -- the label sits in a tight toolbar. */
+  function shortDay(iso) {
+    return iso ? iso.slice(5) : "";
+  }
+
+  function renderDateLabel() {
+    const el = $("dateLabel");
+    if (!el) return;
+    // One rule for both branches: a single day prints as a date, a span prints
+    // as "from to to". "今日" and "昨天" are single days, and "11-23 至 11-23"
+    // reads like a bug rather than like one day.
+    const span = (state.since || state.until)
+      ? [state.since || state.until, state.until || state.since]
+      : presetSpan(state.range);
+    delete el.dataset.custom;
+    if (!span) { el.textContent = t("range.all"); return; }
+    const [from, to] = span;
+    el.textContent = from === to
+      ? t("range.singleDay", { date: shortDay(from) })
+      : t("range.daySpan", { from: shortDay(from), to: shortDay(to) });
+    // Only an explicit window is "custom"; a preset that happens to be one day
+    // is still a preset, and marking it would light a badge for no reason.
+    if (state.since || state.until) el.dataset.custom = "1";
+  }
+
+  function syncRangeButtons() {
+    const custom = !!(state.since || state.until);
+    for (const b of $("rangeNav").querySelectorAll("button")) {
+      // A custom window is not one of the presets, so none of them is pressed.
+      b.setAttribute("aria-pressed",
+        String(!custom && b.dataset.range === state.range));
+    }
+  }
+
+  /** Apply one concrete day, which is what a chart click means. */
+  function pickDay(day) {
+    if (!day) return;
+    state.since = day;
+    state.until = day;
+    state.range = "custom";
+    syncRangeButtons();
+    load();
+  }
+
+  /** Write the picker's hint and remember WHICH message it is.
+   *
+   * The kind is stored rather than the text because the text is language
+   * dependent: comparing it after a language switch always fails, which left
+   * the hint stuck in the previous language. Keeping the kind lets setLang
+   * re-render whatever is currently showing -- prompt or validation error -- in
+   * the new language, instead of choosing between "stale text" and "erase the
+   * error the user is still reading".
+   */
+  function setHint(kind, vars) {
+    state._hintKind = kind || null;
+    const hint = $("dateHint");
+    if (!hint) return;
+    hint.textContent = kind ? t(kind, vars) : "";
+    if (kind) hint.dataset.kind = kind;
+    else delete hint.dataset.kind;
+  }
+
+  function applyCustomRange(from, to) {
+    const a = (from || "").trim();
+    const b = (to || "").trim();
+    if (!a && !b) { clearCustomRange(); return; }
+    if ((a && !isIsoDay(a)) || (b && !isIsoDay(b))) {
+      setHint("range.badDate");
+      return;
+    }
+    if (a && b && a > b) {
+      setHint("range.badOrder");
+      return;
+    }
+    state.since = a || null;
+    state.until = b || a || null;
+    state.range = "custom";
+    setHint(null);
+    setDatePanel(false);
+    syncRangeButtons();
+    load();
+  }
+
+  function clearCustomRange() {
+    state.since = null;
+    state.until = null;
+    state.range = "7d";
+    setHint(null);
+    setDatePanel(false);
+    syncRangeButtons();
+    load();
+  }
+
+  function isIsoDay(value) {
+    return /^\d{4}-\d{2}-\d{2}$/.test(value)
+      && !Number.isNaN(Date.parse(value + "T00:00:00"));
+  }
+
+  function setDatePanel(open) {
+    const panel = $("datePanel");
+    const btn = $("dateBtn");
+    if (!panel || !btn) return;
+    panel.hidden = !open;
+    btn.setAttribute("aria-expanded", open ? "true" : "false");
+    if (open) {
+      // Seed the inputs with whatever is on screen, so opening the picker to
+      // adjust a window does not start from blank fields.
+      const span = state.since || state.until
+        ? [state.since || "", state.until || state.since || ""]
+        : (presetSpan(state.range) || ["", ""]);
+      if ($("dateFrom")) $("dateFrom").value = span[0] || "";
+      if ($("dateTo")) $("dateTo").value = span[1] || "";
+      const hint = $("dateHint");
+      if (hint) setHint("range.pickHint");
+      document.addEventListener("keydown", onDateKey, true);
+      document.addEventListener("pointerdown", onDateOutside, true);
+    } else {
+      document.removeEventListener("keydown", onDateKey, true);
+      document.removeEventListener("pointerdown", onDateOutside, true);
+    }
+  }
+
+  function onDateKey(ev) {
+    if (ev.key === "Escape") {
+      setDatePanel(false);
+      $("dateBtn")?.focus();
+    }
+  }
+
+  function onDateOutside(ev) {
+    const panel = $("datePanel");
+    const btn = $("dateBtn");
+    if (!panel || !btn) return;
+    if (!panel.contains(ev.target) && !btn.contains(ev.target)) setDatePanel(false);
+  }
+
+  function initDatePicker() {
+    const btn = $("dateBtn");
+    if (!btn) return;
+    btn.addEventListener("click", () => {
+      setDatePanel($("datePanel")?.hidden !== false);
+    });
+    $("dateApply")?.addEventListener("click", () => {
+      applyCustomRange($("dateFrom")?.value, $("dateTo")?.value);
+    });
+    $("dateClear")?.addEventListener("click", clearCustomRange);
+    // Enter in either field applies, which is what a two-field form implies.
+    for (const id of ["dateFrom", "dateTo"]) {
+      $(id)?.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter") {
+          ev.preventDefault();
+          applyCustomRange($("dateFrom")?.value, $("dateTo")?.value);
+        }
+      });
+    }
+    const from = $("dateFrom"), to = $("dateTo");
+    // Keep the ends ordered as the user types: a start after the end is always
+    // a typo, and browsers with a native picker cannot express it usefully.
+    if (from && to) {
+      const link = () => {
+        if (from.value) to.min = from.value;
+        if (to.value) from.max = to.value;
+      };
+      from.addEventListener("change", link);
+      to.addEventListener("change", link);
+    }
+  }
+
   async function setLang(lang) {
     state.lang = lang;
     localStorage.setItem("atr.lang", lang);
@@ -2139,6 +2410,17 @@
       state.S = tbl.strings || {};
     } catch { state.S = {}; }
     applyI18n();
+    // The date label is composed from templates ("{from} 至 {to}"), not from a
+    // data-i18n attribute, so applyI18n() cannot reach it -- it kept saying
+    // 「至」 after switching to English. Re-render it explicitly.
+    renderDateLabel();
+    // Same for the picker's hint. It is NOT data-i18n because it also carries
+    // validation errors ("the start is after the end"), and a blanket
+    // translation pass would overwrite an error the user is still reading.
+    // Re-render from the stored KIND instead of comparing text: the text is
+    // language dependent, so a text comparison can never match after a switch
+    // and the hint stayed in the old language.
+    if (state._hintKind) setHint(state._hintKind);
     // Re-render with the new language (tables carry translated headers).
     if (state.data) {
       renderTables(state.data);
@@ -2612,11 +2894,18 @@
       const btn = ev.target.closest("button[data-range]");
       if (!btn) return;
       state.range = btn.dataset.range;
-      for (const b of $("rangeNav").querySelectorAll("button")) {
-        b.setAttribute("aria-pressed", String(b === btn));
-      }
+      // A preset replaces any explicit window; leaving stale dates set would
+      // keep sending range=custom while the button says "近 7 天".
+      state.since = null;
+      state.until = null;
+      syncRangeButtons();
+      renderDateLabel();
       load();
     });
+
+    initDatePicker();
+    syncRangeButtons();
+    renderDateLabel();
 
     $("langSwitch").addEventListener("click", (ev) => {
       const btn = ev.target.closest("button[data-lang]");

@@ -86,10 +86,46 @@
   <div class="controls">
     <nav aria-label="Time range" class="ranges" role="group" id="rangeNav" data-i18n-aria="toolbar.range">
       <button type="button" data-range="today" data-i18n="range.today">今日</button>
+      <button type="button" data-range="yesterday" data-i18n="range.yesterday">昨天</button>
       <button type="button" data-range="7d" aria-pressed="true" data-i18n="range.7d">近 7 天</button>
       <button type="button" data-range="30d" data-i18n="range.30d">近 30 天</button>
       <button type="button" data-range="all" data-i18n="range.all">全部</button>
     </nav>
+
+    <!-- The date control doubles as a readout: it always states the exact
+         window the dashboard is showing, so "近 7 天" is never ambiguous about
+         which seven days. Clicking it opens the picker. -->
+    <div class="date-wrap">
+      <button type="button" id="dateBtn" class="date-btn"
+              aria-expanded="false" aria-controls="datePanel"
+              data-i18n-aria="range.pickDates">
+        <svg class="date-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="3" y="4.5" width="18" height="16" rx="2.5"/>
+          <path d="M3 9.5h18M8 3v3M16 3v3"/>
+        </svg>
+        <span id="dateLabel">—</span>
+      </button>
+
+      <div id="datePanel" class="date-panel" hidden>
+        <h3 class="date-title" data-i18n="range.pickDates">选择日期</h3>
+        <div class="date-fields">
+          <label class="date-field">
+            <span data-i18n="range.from">开始</span>
+            <input type="date" id="dateFrom">
+          </label>
+          <label class="date-field">
+            <span data-i18n="range.to">结束</span>
+            <input type="date" id="dateTo">
+          </label>
+        </div>
+        <p id="dateHint" class="date-hint" role="status" aria-live="polite"></p>
+        <p class="date-actions">
+          <button type="button" id="dateApply" class="date-apply" data-i18n="range.apply">应用</button>
+          <button type="button" id="dateClear" class="date-clear" data-i18n="range.clear">清除</button>
+        </p>
+      </div>
+    </div>
 
     <button type="button" id="refreshBtn" class="btn-primary">
       <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"

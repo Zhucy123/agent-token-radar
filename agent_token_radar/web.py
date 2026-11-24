@@ -44,11 +44,67 @@ def _local_offset_ms() -> int:
     return int(off.total_seconds() * 1000) if off else 0
 
 
-def _bounds(rng: str) -> tuple[int | None, int | None]:
+def _bounds(rng: str, since: str | None = None,
+            until: str | None = None) -> tuple[int | None, int | None]:
+    """Resolve a range label OR an explicit date window to ms bounds.
+
+    An explicit ``since``/``until`` pair wins: it is what the date picker and a
+    click on the trend chart send. Dates are LOCAL calendar days, because every
+    other figure in the dashboard is bucketed by the user's local day -- using
+    UTC here would make "yesterday" mean two different days depending on the
+    hour.
+
+    ``until`` is inclusive: passing the same day twice selects exactly that day,
+    which is what a chart click means.
+
+    An unknown label RAISES. It used to fall back to ``(None, None)``, which made
+    a typo -- or a range the frontend offers but the backend never learned --
+    silently mean "all time". That shipped: ``range=yesterday`` returned the
+    entire history while the button and the date label both said "yesterday",
+    so the screen showed 92 days under a heading claiming one. Returning
+    everything is the worst possible answer to "I do not know this range".
+    """
+    start = _parse_day(since)
+    end = _parse_day(until)
+    if start is not None or end is not None:
+        # A reversed window (until before since) is a mistake, not an empty
+        # result: SQL would happily return zero rows and the dashboard would
+        # show a confident "0 tokens" for a period that cannot exist. Clamping
+        # to an empty window keeps the API honest -- no rows either way -- while
+        # the UI is what explains the mistake to the user.
+        if start is not None and end is not None and end < start:
+            return start, start
+        since_ms = start
+        # Inclusive end day -> exclusive midnight after it.
+        until_ms = end + 86400_000 if end is not None else None
+        return since_ms, until_ms
+    return _range_bounds(rng)
+
+
+def _bad_range(exc: ValueError) -> JSONResponse:
+    """A range label the backend does not know is a client error, not "all".
+
+    Answering with the whole history is what let ``range=yesterday`` render 92
+    days under a heading that said "yesterday" -- nothing on screen looked
+    wrong. A 400 makes the mistake visible instead of plausible.
+    """
+    return JSONResponse(
+        {"error": "unknown_range", "detail": str(exc)}, status_code=400)
+
+
+def _parse_day(value: str | None) -> int | None:
+    """A local ``YYYY-MM-DD`` date at midnight, in epoch ms, or None."""
+    if not value:
+        return None
+    text = value.strip()
+    if not text:
+        return None
     try:
-        return _range_bounds(rng)
+        day = dt.date.fromisoformat(text)
     except ValueError:
-        return None, None
+        return None
+    midnight = dt.datetime.combine(day, dt.time.min).astimezone()
+    return int(midnight.timestamp() * 1000)
 
 
 #: Set AGENT_TOKEN_RADAR_NO_UPDATE_CHECK=1 to disable update checking entirely.
@@ -146,8 +202,9 @@ class DashboardState:
         self._stop.set()
         self.store.close()
 
-    def overview(self, rng: str) -> dict[str, Any]:
-        since, until = _bounds(rng)
+    def overview(self, rng: str, since: str | None = None,
+                 until: str | None = None) -> dict[str, Any]:
+        since, until = _bounds(rng, since, until)
         s = self.store
         # One scan, three views. totals/by_agent/by_model used to be three
         # separate queries, each re-scanning usage_events and re-evaluating the
@@ -197,8 +254,9 @@ class DashboardState:
             "peak_hours": {k: v.as_meta() for k, v in p.peak.items()},
         }
 
-    def trend(self, rng: str) -> dict[str, Any]:
-        since, until = _bounds(rng)
+    def trend(self, rng: str, since: str | None = None,
+              until: str | None = None) -> dict[str, Any]:
+        since, until = _bounds(rng, since, until)
         tz = _local_offset_ms()
 
         # Choose the bucket width from the data's actual span, not from the
@@ -261,12 +319,22 @@ def create_app(scan_interval: int = 30) -> FastAPI:
         )
 
     @app.get("/api/overview")
-    def overview(range: str = Query("7d", alias="range")) -> JSONResponse:
-        return JSONResponse(state.overview(range))
+    def overview(range: str = Query("7d", alias="range"),
+                 since: str | None = Query(None),
+                 until: str | None = Query(None)) -> JSONResponse:
+        try:
+            return JSONResponse(state.overview(range, since, until))
+        except ValueError as exc:
+            return _bad_range(exc)
 
     @app.get("/api/trend")
-    def trend(range: str = Query("7d", alias="range")) -> JSONResponse:
-        return JSONResponse(state.trend(range))
+    def trend(range: str = Query("7d", alias="range"),
+              since: str | None = Query(None),
+              until: str | None = Query(None)) -> JSONResponse:
+        try:
+            return JSONResponse(state.trend(range, since, until))
+        except ValueError as exc:
+            return _bad_range(exc)
 
     @app.get("/api/scan/status")
     def status() -> JSONResponse:

@@ -65,14 +65,23 @@ def _range_bounds(rng: str, tz_offset_minutes: int | None = None) -> tuple[int |
     # Local midnight today.
     today = now.replace(hour=0, minute=0, second=0, microsecond=0)
     if rng == "today":
-        start = today
+        start, end = today, None
+    elif rng == "yesterday":
+        # A single past day, bounded on BOTH sides. Without the upper bound the
+        # window would run to now and quietly include today's usage -- and
+        # without this branch at all the caller's ValueError fallback turned
+        # "yesterday" into "all time", which is what shipped once and made the
+        # button look correct while the chart drew the whole history.
+        start = today - dt.timedelta(days=1)
+        end = today
     elif rng == "7d":
-        start = today - dt.timedelta(days=6)
+        start, end = today - dt.timedelta(days=6), None
     elif rng == "30d":
-        start = today - dt.timedelta(days=29)
+        start, end = today - dt.timedelta(days=29), None
     else:
         raise ValueError(f"unknown range: {rng}")
-    return int(start.timestamp() * 1000), None
+    since = int(start.timestamp() * 1000)
+    return since, (int(end.timestamp() * 1000) if end is not None else None)
 
 
 def _local_tz_offset_ms() -> int:
@@ -399,7 +408,9 @@ def build_parser() -> argparse.ArgumentParser:
     ps.set_defaults(func=cmd_scan)
 
     pst = sub.add_parser("stats", help="print an aggregate report")
-    pst.add_argument("--range", choices=["today", "7d", "30d", "all"], default="all")
+    pst.add_argument("--range",
+                     choices=["today", "yesterday", "7d", "30d", "all"],
+                     default="all")
     pst.add_argument("--by", choices=["agent", "model", "day", "project"], default=None)
     pst.add_argument("--json", action="store_true", help="machine-readable output")
     _add_lang(pst)
