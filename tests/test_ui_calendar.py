@@ -150,6 +150,75 @@ class CalendarFrontendTests(unittest.TestCase):
         self.assertNotIn("inline-size: .8125rem", body,
                          "a fixed 13px side left the year covering only half the panel")
 
+    def test_the_cells_carry_no_hairline_ring(self) -> None:
+        """The 1px inset ring is what made the whole year look out of focus.
+
+        Measured: with the ring, 421 anti-aliased pixels per scanline at 100%
+        scaling and 839 at 150%; without it, 5 and 215 (and 0 with an integer
+        pitch). A 1px line on a ~22px square is a fraction of a device pixel
+        once the display scales, so Chromium smears it into a grey halo.
+        """
+        css = self._css()
+        m = re.search(r"\n  \.cal-cell\s*\{(.*?)\n  \}", css, re.S)
+        self.assertIsNotNone(m)
+        self.assertNotIn("box-shadow", m.group(1),
+                         "no ring on the cells; the palest band is a fill instead")
+
+    def test_the_palest_band_is_a_fill_not_the_panel_colour(self) -> None:
+        """A near-invisible square is not a square. Level 0 must have its own mix."""
+        css = self._css()
+        m = re.search(r"\n  \.cal-cell\s*\{(.*?)\n  \}", css, re.S)
+        self.assertIsNotNone(m)
+        self.assertIn("var(--cal-l0)", m.group(1))
+        # And the five bands are declared once, on the panel, so the legend and
+        # the squares cannot drift apart.
+        for name in ("--cal-l0", "--cal-l1", "--cal-l2", "--cal-l3"):
+            self.assertIn(name, css, name)
+        swatch = re.search(r"\n  \.cal-swatch\s*\{(.*?)\n  \}", css, re.S)
+        self.assertIsNotNone(swatch)
+        self.assertIn("var(--cal-l0", swatch.group(1),
+                      "the legend swatch must use the same band colours")
+
+    def test_the_weekday_gutter_shares_the_row_grid(self) -> None:
+        """The Mon/Wed/Fri labels sat ~94px above their rows.
+
+        Cause: the gutter was a sibling of a wrapper holding BOTH the month strip
+        and the day field, so the strip's height pushed the field down while the
+        labels stayed at the top. They must share one grid so the second column
+        (and hence the row positions) is common to both.
+        """
+        html = INDEX_HTML.read_text(encoding="utf-8")
+        body = re.search(r'<div class="cal-body">(.*?)\n        </div>', html, re.S)
+        self.assertIsNotNone(body)
+        block = body.group(1)
+        # Month strip and weekday gutter are BOTH direct children of cal-body,
+        # and the year area holds only the day field.
+        self.assertIn('id="calMonthRow"', block)
+        self.assertIn('id="calWeekdays"', block)
+        year_area = re.search(r'<div class="cal-year-area">(.*?)\n          </div>',
+                              block, re.S)
+        self.assertIsNotNone(year_area)
+        self.assertNotIn('id="calMonthRow"', year_area.group(1),
+                         "the month strip must not sit inside the year area")
+        css = self._css()
+        m = re.search(r"\n  \.cal-body\s*\{(.*?)\n  \}", css, re.S)
+        self.assertIsNotNone(m)
+        self.assertIn("grid-template-areas", m.group(1))
+
+    def test_the_weekday_rows_have_the_same_pitch_as_the_grid(self) -> None:
+        """Content-sized rows put Wed next to Tuesday. `1fr` rows + the same gap
+        as the day field make each label row exactly one square row tall."""
+        css = self._css()
+        # There are several `.cal-weekdays` rules (grid-area, then the layout);
+        # take the one that actually sets the row template.
+        bodies = [m.group(1) for m in
+                  re.finditer(r"\n  \.cal-weekdays\s*\{(.*?)\n  \}", css, re.S)]
+        self.assertTrue(bodies, "no .cal-weekdays rule found")
+        body = next((b for b in bodies if "grid-template-rows" in b), None)
+        self.assertIsNotNone(body, "no .cal-weekdays rule sets grid-template-rows")
+        self.assertIn("repeat(7, minmax(0, 1fr))", body)
+        self.assertIn("gap: 2px", body)
+
     def test_no_usage_renders_as_words_not_zero(self) -> None:
         """The one rule the whole project holds: an unknown price is not $0."""
         js = self._js()

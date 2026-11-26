@@ -1235,7 +1235,16 @@
      linear token scale: one 400M day would otherwise bleach the rest of the
      year. `color-mix` against the brand colour keeps all five in one hue and
      survives the dark theme, where a fixed green ramp washes out. */
-  .cal-panel { overflow: visible; }
+  .cal-panel {
+    overflow: visible;
+    /* The five bands, as plain colours. The palest band has to be clearly
+       lighter than the panel but still a FILLED square: before this it was a
+       near-white fill plus a 1px inset ring, and the ring is what blurred. */
+    --cal-l0: color-mix(in oklab, var(--brand) 14%, var(--panel));
+    --cal-l1: color-mix(in oklab, var(--brand) 34%, var(--panel));
+    --cal-l2: color-mix(in oklab, var(--brand) 54%, var(--panel));
+    --cal-l3: color-mix(in oklab, var(--brand) 76%, var(--panel));
+  }
   .cal-head {
     display: flex;
     flex-wrap: wrap;
@@ -1286,12 +1295,11 @@
     inline-size: .75rem;
     block-size: .75rem;
     border-radius: 2px;
-    background: color-mix(in oklab, var(--brand) 12%, var(--surface-sunken));
-    border: 1px solid color-mix(in oklab, var(--hairline) 70%, transparent);
+    background: var(--cal-l0, #eaf0fc);
   }
-  .cal-swatch[data-level="1"] { background: color-mix(in oklab, var(--brand) 32%, var(--surface-sunken)); }
-  .cal-swatch[data-level="2"] { background: color-mix(in oklab, var(--brand) 52%, var(--surface-sunken)); }
-  .cal-swatch[data-level="3"] { background: color-mix(in oklab, var(--brand) 74%, var(--surface-sunken)); }
+  .cal-swatch[data-level="1"] { background: var(--cal-l1); }
+  .cal-swatch[data-level="2"] { background: var(--cal-l2); }
+  .cal-swatch[data-level="3"] { background: var(--cal-l3); }
   .cal-swatch[data-level="4"] { background: var(--brand); }
 
   .cal-wrap { position: relative; overflow-x: auto; padding-block-end: var(--space-1); }
@@ -1300,7 +1308,28 @@
      column). Both take the same explicit column count -- set by the renderer
      from the real number of weeks -- and `minmax(0, 1fr)` splits the same width
      identically, so 1 Dec sits over the column that holds 1 Dec. */
-  .cal-year-area { flex: 1 1 auto; min-inline-size: 0; }
+  /* Two rows, two columns:
+       row 1:  (empty gutter cell) | month strip
+       row 2:  weekday labels      | day field
+     Sharing the grid (and therefore the same second column) is what keeps the
+     month strip over the right weeks AND the Mon/Wed/Fri labels level with
+     their rows. When the gutter sat beside a wrapper that held both the strip
+     and the field, the strip's height pushed the field down by ~94px while the
+     labels stayed at the top. */
+  .cal-body {
+    display: grid;
+    /* `max-content` on the gutter, not `auto`: `auto` resolved to 11px here and
+       then a 12px weekday glyph was clipped in half. */
+    grid-template-columns: max-content minmax(0, 1fr);
+    grid-template-areas:
+      ".    months"
+      "wdays days";
+    column-gap: var(--space-2);
+    align-items: start;
+  }
+  .cal-months { grid-area: months; }
+  .cal-weekdays { grid-area: wdays; }
+  .cal-year-area { grid-area: days; min-inline-size: 0; }
   .cal-months,
   .cal-grid {
     display: grid;
@@ -1331,16 +1360,20 @@
     position: relative;
     z-index: 1;
   }
-  .cal-body { display: flex; gap: var(--space-2); align-items: flex-start; }
   .cal-weekdays {
     display: grid;
-    grid-template-rows: repeat(7, auto);
+    /* `1fr` rows + the same 2px gap as the day field: each label row then has
+       exactly the height of a square row, so the centres line up whatever the
+       panel width is. Content-sized rows (the earlier `auto`) did not. */
+    grid-template-rows: repeat(7, minmax(0, 1fr));
     gap: 2px;
+    align-self: stretch;
     font-size: var(--text-xs);
     color: var(--muted);
-    /* Third row (Wed) and fifth (Fri); the rest stay blank but keep the pitch. */
-    align-content: start;
+    text-align: end;
   }
+  .cal-weekdays span { display: flex; align-items: center; justify-content: flex-end; }
+  /* Third row (Wed) and fifth (Fri); the rest stay blank but keep the pitch. */
   .cal-weekdays span:first-child { grid-row: 1; }
   .cal-weekdays span:nth-child(2) { grid-row: 3; }
   .cal-weekdays span:nth-child(3) { grid-row: 5; }
@@ -1352,15 +1385,18 @@
     aspect-ratio: 1;
     padding: 0;
     border: 0;
-    border-radius: 2px;
+    border-radius: 3px;
     cursor: pointer;
-    background: color-mix(in oklab, var(--brand) 12%, var(--surface-sunken));
-    /* A visible edge, so a quiet day still reads as a square on a light page. */
-    box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--hairline) 70%, transparent);
+    background: var(--cal-l0);
+    /* NO border and NO inset shadow here. A 1px inset ring was drawn to make a
+       quiet square visible on a white panel, but a 1px line on a 22px square is
+       half a pixel once the display scales, so every square got a grey halo and
+       the whole grid read as out of focus. The palest band is a real colour
+       instead (see --cal-l0 below), which stays crisp at any scale. */
   }
-  .cal-cell[data-level="1"] { background: color-mix(in oklab, var(--brand) 32%, var(--surface-sunken)); }
-  .cal-cell[data-level="2"] { background: color-mix(in oklab, var(--brand) 52%, var(--surface-sunken)); }
-  .cal-cell[data-level="3"] { background: color-mix(in oklab, var(--brand) 74%, var(--surface-sunken)); }
+  .cal-cell[data-level="1"] { background: color-mix(in oklab, var(--brand) 34%, var(--panel)); }
+  .cal-cell[data-level="2"] { background: color-mix(in oklab, var(--brand) 54%, var(--panel)); }
+  .cal-cell[data-level="3"] { background: color-mix(in oklab, var(--brand) 76%, var(--panel)); }
   .cal-cell[data-level="4"] { background: var(--brand); }
   .cal-cell:hover { outline: 2px solid var(--brand); outline-offset: 1px; }
   .cal-cell:focus-visible {
@@ -1370,7 +1406,10 @@
     z-index: 1;
   }
   /* Today gets a ring rather than a different colour: colour already means
-     "how much", and overloading it would make today look like its own band. */
+     "how much", and overloading it would make today look like its own band.
+     A 2px ring, not a 1px one, and drawn inset so it never spreads into the
+     gap: 2px is a whole device pixel at every common display scale, so it stays
+     sharp where a 1px ring was smeared into a grey halo. */
   .cal-cell[data-today="1"] { box-shadow: inset 0 0 0 2px var(--text); }
   .cal-pad { inline-size: 100%; aspect-ratio: 1; }
 

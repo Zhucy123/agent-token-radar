@@ -305,14 +305,15 @@
         </p>
       </div>
       <div class="cal-wrap">
-        <!-- The weekday gutter and the year sit side by side. Inside the year,
-             the month strip and the day field are two grids with the SAME column
-             template and the same width, so a label can never drift away from
-             the week it names. -->
+        <!-- Three grid items, not two: the weekday gutter must line up with the
+             day field, and it can only do that if it shares the grid row with
+             it. When the gutter sat beside a wrapper holding BOTH the month
+             strip and the field, the strip's height pushed the field down and
+             the labels stayed at the top (measured 94px out of step). -->
         <div class="cal-body">
+          <div id="calMonthRow" class="cal-months" aria-hidden="true"></div>
           <div id="calWeekdays" class="cal-weekdays" aria-hidden="true"></div>
           <div class="cal-year-area">
-            <div id="calMonthRow" class="cal-months" aria-hidden="true"></div>
             <div id="calGrid" class="cal-grid" role="grid"
                  aria-labelledby="calendar-title" data-i18n-aria="cal.grid"></div>
           </div>

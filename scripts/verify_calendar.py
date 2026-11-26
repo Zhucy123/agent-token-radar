@@ -71,6 +71,67 @@ HOVER = r"""
 })()
 """
 
+# Layout facts that no amount of reading the source can prove:
+#  * the Mon/Wed/Fri gutter is level with the rows of squares it labels
+#  * every month label sits over the week column that contains its 1st
+#  * a quiet square is a FILLED band, not a hairline ring (a 1px ring on a 22px
+#    square turns into a grey halo at fractional display scales and makes the
+#    whole year look out of focus)
+#  * the gutter column is wide enough for its glyphs
+LAYOUT = r"""
+(() => {
+  const grid = document.getElementById('calGrid');
+  const items = [...grid.children];
+  const rowCentre = (i) => {
+    const el = items[i];
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return Math.round((r.top + r.height / 2) * 100) / 100;
+  };
+  // items[i], items[i+7], ... are the same weekday, so items[i] starts row i+1.
+  const rowCentres = [0,1,2,3,4,5,6].map(rowCentre);
+
+  const labels = [...document.querySelectorAll('#calWeekdays span')].map(s => {
+    const r = s.getBoundingClientRect();
+    return {text: s.textContent,
+            centre: Math.round((r.top + r.height / 2) * 100) / 100,
+            width: Math.round(r.width * 100) / 100};
+  });
+  // The three labels are Mon / Wed / Fri -> rows 1, 3, 5 (1-based).
+  const wantRows = [0, 2, 4];
+  const labelDeltas = labels.map((l, i) =>
+    Math.round((l.centre - rowCentres[wantRows[i]]) * 100) / 100);
+
+  // Month labels vs the column of squares they name.
+  const colLeft = {};
+  items.forEach((el, i) => {
+    const col = Math.floor(i / 7) + 1;
+    if (colLeft[col] === undefined) colLeft[col] = el.getBoundingClientRect().left;
+  });
+  const monthDeltas = [...document.querySelectorAll('.cal-month')].map(m => {
+    const col = parseInt(m.style.gridColumn, 10);
+    if (!col || colLeft[col] === undefined) return null;
+    return Math.round((m.getBoundingClientRect().left - colLeft[col]) * 100) / 100;
+  }).filter(v => v !== null);
+
+  const quiet = document.querySelector('#calGrid .cal-cell[data-level="0"]');
+  const cs = quiet ? getComputedStyle(quiet) : null;
+
+  return {
+    labelDeltas,
+    maxLabelDelta: labelDeltas.length ? Math.max(...labelDeltas.map(Math.abs)) : null,
+    monthDeltas,
+    maxMonthDelta: monthDeltas.length ? Math.max(...monthDeltas.map(Math.abs)) : null,
+    monthCount: monthDeltas.length,
+    gutterWidth: Math.round(
+      document.getElementById('calWeekdays').getBoundingClientRect().width * 100) / 100,
+    quietShadow: cs ? cs.boxShadow : null,
+    quietBg: cs ? cs.backgroundColor : null,
+    gutterClipped: labels.some(l => l.width <= 0),
+  };
+})()
+"""
+
 
 def hover(b, selector: str):
     return b.js(HOVER % json.dumps(selector))
@@ -187,6 +248,26 @@ def main() -> int:
         w = b.js("document.getElementById('calPrev').getBoundingClientRect().width")
         check_true("年份按钮 >= 44px", h >= 43.5 and w >= 43.5, f"{w}x{h}")
         b.cdp.call("Emulation.setTouchEmulationEnabled", enabled=False)
+
+        print("\n[11] 排版：星期标签对齐、月份标签对齐、格子不发虚")
+        b.js("document.querySelector('#langSwitch button[data-lang=\"zh\"]').click()")
+        time.sleep(1.2)
+        lay = b.js(LAYOUT)
+        print(f"       {lay}")
+        check_true("星期标签与所在行居中偏差 <= 1px",
+                   lay["maxLabelDelta"] is not None and lay["maxLabelDelta"] <= 1.0,
+                   f"max {lay['maxLabelDelta']}px")
+        check_true("月份标签与所在列左边缘对齐 <= 1px",
+                   lay["maxMonthDelta"] is not None and lay["maxMonthDelta"] <= 1.0,
+                   f"max {lay['maxMonthDelta']}px over {lay['monthCount']} labels")
+        check("12 个月份标签", lay["monthCount"], 12)
+        check_true("星期栏没有被裁成 0 宽",
+                   not lay["gutterClipped"] and lay["gutterWidth"] >= 8,
+                   f"width {lay['gutterWidth']}px")
+        check("最浅一档没有 1px 内阴影环（发虚的根因）", lay["quietShadow"], "none")
+        check_true("最浅一档有真实底色，不是近白填充",
+                   bool(lay["quietBg"]) and lay["quietBg"] != "rgba(0, 0, 0, 0)",
+                   lay["quietBg"])
     finally:
         b.close()
 
