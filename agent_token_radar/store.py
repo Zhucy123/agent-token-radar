@@ -1445,6 +1445,54 @@ class Store:
         ).fetchall()
         return [dict(r) for r in rows]
 
+    def daily_totals(
+        self,
+        *,
+        since_ms: int | None = None,
+        until_ms: int | None = None,
+        tz_offset_ms: int = 0,
+    ) -> list[dict[str, Any]]:
+        """One row per local calendar day, for the calendar heatmap.
+
+        Separate from ``by_day`` on purpose: that one splits by agent so the
+        stacked chart can draw bands, and summing its rows back together here
+        would still leave the *cost coverage* wrong -- an unpriced model has a
+        NULL cost that a client-side sum cannot distinguish from a day with no
+        usage at all. Carrying ``priced_tokens`` lets the tooltip say how much of
+        the day's tokens the estimate actually covers, which is the project's
+        rule for every money figure.
+
+        Days with no usage produce no row; the calendar fills the gaps itself so
+        the grid stays a real calendar instead of a compressed list.
+        """
+        where, args = self._where(since_ms, until_ms)
+        offset = int(tz_offset_ms)
+        expr = f"strftime('%Y-%m-%d', (timestamp + {offset}) / 1000, 'unixepoch')"
+        rows = self.con.execute(
+            f"""SELECT {expr} AS day,
+                       COUNT(*) AS events,
+                       SUM(usage_events.total_tokens) AS total_tokens,
+                       SUM({COST_ROW_SQL}) AS cost_usd,
+                       {PRICED_TOKENS_SQL} AS priced_tokens
+                FROM usage_events {PRICE_JOIN_SQL} {where}
+                GROUP BY day ORDER BY day""",
+            args,
+        ).fetchall()
+        out: list[dict[str, Any]] = []
+        for r in rows:
+            total = int(r["total_tokens"] or 0)
+            priced = int(r["priced_tokens"] or 0)
+            out.append({
+                "day": r["day"],
+                "events": int(r["events"] or 0),
+                "total_tokens": total,
+                # None, not 0: a day whose models are all unpriced has no
+                # estimate, and "0" would claim it was free.
+                "cost_usd": r["cost_usd"],
+                "priced_ratio": (priced / total) if total else 0.0,
+            })
+        return out
+
     @staticmethod
     def _where(
         since_ms: int | None,

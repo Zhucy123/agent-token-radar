@@ -133,14 +133,25 @@ def main() -> int:
                    ".getAttribute('aria-pressed')"), "true")
 
         print("\n3. 点趋势图某一天 -> 跳到该日，预设按钮熄灭")
+        # The chart must be INSIDE the viewport before a synthetic click means
+        # anything: CDP dispatches at viewport coordinates, so a canvas below the
+        # fold gets no event at all. Adding a section above the chart pushed it
+        # to y=922 in a 905px viewport, and the click silently did nothing --
+        # the product was fine, the check was clicking empty space.
+        b.js("document.getElementById('trendChart').scrollIntoView({block:'center'})")
+        time.sleep(0.8)
         hit = b.js("""(() => {
           const c = document.getElementById('trendChart');
           if (!c) return null;
           const r = c.getBoundingClientRect();
-          return { x: r.left, y: r.top, w: r.width, h: r.height };
+          return { x: r.left, y: r.top, w: r.width, h: r.height,
+                   vh: window.innerHeight, onScreen: r.top >= 0 && r.bottom <= window.innerHeight };
         })()""")
         if not hit:
             FAILURES.append("trend canvas not found")
+        elif not hit.get("onScreen"):
+            FAILURES.append("trend canvas is not fully on screen after scrolling")
+            print(f"       canvas {hit}")
         else:
             # Click near the LEFT EDGE of the first slot, not the bar centre.
             # A bar is ~56px of a slot that can be 190px+, so a hit test on the

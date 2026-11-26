@@ -42,6 +42,7 @@
      id in index.html, so href="#id" is a genuine native anchor jump. */
   const NAV_SECTIONS = [
     { id: "cards-title", key: "nav.summary" },
+    { id: "calendar-title", key: "nav.calendar" },
     { id: "trend-title", key: "nav.trend" },
     { id: "agent-title", key: "nav.byAgent" },
     { id: "model-title", key: "nav.byModel" },
@@ -2423,6 +2424,8 @@
       renderCards(state.data.totals || {});
       renderTables(state.data);
       renderChart(state.trend || { days: [], agents: [], series: {} });
+      // The calendar's numbers are formatted too, so it follows the switch.
+      if (window.__lastCalendar) renderCalendar(window.__lastCalendar);
       // The hint explains what the two modes mean, so it follows the choice.
       setStatus(t("status.loaded", {
         rows: fmt(state.data.db_rows),
@@ -2447,6 +2450,318 @@
     state.range = "custom";
     syncRangeButtons();
     load();
+  }
+
+  /* ------------------------------------------------------------ calendar
+
+     One square per day for a whole year. A bar chart cannot answer "when in the
+     year did I spend", because 365 bars collapse into unreadable slivers -- here
+     the shape of the year is visible at once.
+
+     The backend sends a DENSE list of every day of the year including the quiet
+     ones, so this code does no date arithmetic beyond laying the entries out in
+     weeks. That matters: leap years, month lengths and which weekday the 1st
+     falls on are all decided server-side, where they can be tested. */
+
+  const CAL_LEVELS = 5;
+
+  /** Bucket a day's tokens into one of CAL_LEVELS shades.
+   *
+   * Banded by RANK, not by token count: a single 400M day would push every other
+   * day into the palest shade and the calendar would read as "one busy day".
+   * Splitting the year's active days into equal groups keeps the whole year
+   * legible, and the legend says "less / more" rather than promising an absolute
+   * scale.
+   */
+  function calendarLevels(days) {
+    const sorted = days.map((d) => d.total_tokens).filter((v) => v > 0).sort((a, b) => a - b);
+    if (!sorted.length) return () => 0;
+    // Cut points at 20/40/60/80% of the active days.
+    const cuts = [0.2, 0.4, 0.6, 0.8].map((q) => sorted[Math.min(
+      sorted.length - 1, Math.floor(q * sorted.length))]);
+    return (tokens) => {
+      if (!tokens) return 0;
+      let level = 1;
+      for (const cut of cuts) if (tokens > cut) level += 1;
+      return Math.min(CAL_LEVELS - 1, level);
+    };
+  }
+
+  function renderCalendar(cal) {
+    const grid = $("calGrid");
+    if (!grid) return;
+    const days = cal.days || [];
+    const year = cal.year;
+    const label = $("calYearLabel");
+    if (label) label.textContent = String(year);
+
+    grid.replaceChildren();
+    const months = $("calMonthRow");
+    if (months) months.replaceChildren();
+    const weekdays = $("calWeekdays");
+    if (weekdays) {
+      weekdays.replaceChildren();
+      // Mon / Wed / Fri only: every row labelled would be noise at 10px squares.
+      for (const key of ["cal.weekMon", "cal.weekWed", "cal.weekFri"]) {
+        const s = document.createElement("span");
+        s.textContent = t(key);
+        weekdays.appendChild(s);
+      }
+    }
+
+    if (!days.length) {
+      setCalendarStatus(t("cal.empty"));
+      return;
+    }
+
+    const levelOf = calendarLevels(days);
+    const hasAny = days.some((d) => d.total_tokens > 0);
+    setCalendarStatus(hasAny ? t("cal.hint") : t("cal.empty"));
+
+    // Column-major: one column per week, Monday at the top. The grid is a CSS
+    // grid with `grid-auto-flow: column`, so appending in day order fills each
+    // week downwards before starting the next column.
+    //
+    // The year does not necessarily start on a Monday, so pad the first week.
+    const firstWeekday = days[0] ? days[0].weekday : 0;
+    for (let i = 0; i < firstWeekday; i++) {
+      const pad = document.createElement("span");
+      pad.className = "cal-pad";
+      pad.setAttribute("aria-hidden", "true");
+      grid.appendChild(pad);
+    }
+
+    const monthCells = [];
+    let lastMonth = -1;
+    for (const d of days) {
+      const cell = document.createElement("button");
+      cell.type = "button";
+      cell.className = "cal-cell";
+      cell.dataset.day = d.day;
+      cell.dataset.level = String(levelOf(d.total_tokens));
+      cell.dataset.weekday = String(d.weekday);
+      if (d.total_tokens > 0) cell.dataset.used = "1";
+      if (d.day === cal.today) cell.dataset.today = "1";
+      // The accessible name has to carry the numbers: a screen-reader user
+      // cannot hover a 10px square, and colour alone is not information.
+      cell.setAttribute("aria-label", calendarDayLabel(d));
+      // Roving tabindex: the whole year is ONE tab stop, then arrow keys move
+      // within it. 365 tab stops would bury the rest of the page.
+      cell.tabIndex = -1;
+      grid.appendChild(cell);
+
+      const month = Number(d.day.slice(5, 7));
+      if (month !== lastMonth) {
+        monthCells.push({ month, cell });
+        lastMonth = month;
+      }
+    }
+
+    // Month labels sit above the column their month starts in. One shared column
+    // count drives BOTH the month strip and the day grid, so the two can never
+    // drift apart (they did when each sized its own auto columns).
+    const totalCols = Math.ceil((days.length + firstWeekday) / 7);
+    const monthsEl = $("calMonthRow");
+    if (monthsEl) monthsEl.style.setProperty("--cal-cols", String(totalCols));
+
+    // Month labels sit above the column their month starts in.
+    if (months) {
+      months.style.setProperty("--cal-cols", String(totalCols));
+      for (const { month, cell } of monthCells) {
+        const span = document.createElement("span");
+        span.className = "cal-month";
+        span.textContent = t(`cal.m${month}`);
+        // Place it in the column that holds the cell.
+        span.style.gridColumn = String(columnOf(cell, grid));
+        months.appendChild(span);
+      }
+    }
+
+    // The single tab stop: today if it is in this year, else the last day with
+    // usage, else 1 January. Landing on "today" is what a reader wants first.
+    let active = grid.querySelector('.cal-cell[data-today="1"]')
+      || [...grid.querySelectorAll(".cal-cell[data-used='1']")].pop()
+      || grid.querySelector(".cal-cell");
+    if (active) active.tabIndex = 0;
+    state._calActive = active;
+
+    wireCalendar(grid);
+  }
+
+  /** Which grid column a cell lands in (1-based). */
+  function columnOf(cell, grid) {
+    // Every cell before it, plus the leading pads, over 7 rows per column.
+    const all = [...grid.children];
+    return Math.floor(all.indexOf(cell) / 7) + 1;
+  }
+
+  function calendarDayLabel(d) {
+    const date = shortDay2(d.day);
+    const wd = t(`cal.w${d.weekday}`);
+    const head = t("cal.tip", { date, weekday: wd });
+    if (!d.total_tokens) return `${head}，${t("cal.tipEmpty")}`;
+    const parts = [t("cal.tipTokens", { tokens: fmt(d.total_tokens) })];
+    if (d.cost_usd === null || d.cost_usd === undefined) {
+      parts.push(t("cal.tipNoPrice"));
+    } else {
+      parts.push(t("cal.tipCost", { cost: money(d.cost_usd) }));
+      if (d.priced_ratio < 0.999) {
+        parts.push(t("cal.tipPartial", { pct: pct(d.priced_ratio) }));
+      }
+    }
+    return `${head}，${parts.join("，")}`;
+  }
+
+  /** MM-DD (the year is already the heading). */
+  function shortDay2(iso) {
+    return iso ? iso.slice(5) : "";
+  }
+
+  function setCalendarStatus(text) {
+    const el = $("calStatus");
+    if (el) el.textContent = text || "";
+  }
+
+  /** Hover / focus tooltip, click to focus that day, arrow-key navigation.
+   *
+   * The tooltip is a plain element positioned near the cell rather than
+   * `popover="hint"`: this page has to work in an embedded WebView (the desktop
+   * window) where the Interest Invoker API and CSS anchor positioning are not
+   * available, and a tooltip that silently never appears is worse than a
+   * hand-placed one. It is wired to hover AND focus, so a keyboard user gets the
+   * same text as a mouse user.
+   */
+  function wireCalendar(grid) {
+    const tip = $("calTip");
+    if (!grid.dataset.wired) {
+      grid.dataset.wired = "1";
+
+      const show = (cell) => {
+        if (!tip) return;
+        const d = (state._calDays || []).find((x) => x.day === cell.dataset.day);
+        if (!d) { tip.hidden = true; return; }
+        tip.hidden = false;
+        tip.replaceChildren();
+        const head = document.createElement("div");
+        head.className = "tip-head";
+        head.textContent = calendarDayLabel(d).split("，")[0];
+        tip.appendChild(head);
+        const body = document.createElement("div");
+        body.className = "tip-row";
+        body.textContent = d.total_tokens
+          ? t("cal.tipTokens", { tokens: fmt(d.total_tokens) })
+          : t("cal.tipEmpty");
+        tip.appendChild(body);
+        if (d.total_tokens) {
+          const cost = document.createElement("div");
+          cost.className = "tip-row";
+          if (d.cost_usd === null || d.cost_usd === undefined) {
+            cost.textContent = t("cal.tipNoPrice");
+          } else {
+            cost.textContent = t("cal.tipCost", { cost: money(d.cost_usd) })
+              + (d.priced_ratio < 0.999
+                ? ` · ${t("cal.tipPartial", { pct: pct(d.priced_ratio) })}` : "");
+          }
+          tip.appendChild(cost);
+        }
+        // Place it above the cell, clamped to the panel so it never runs off.
+        const wrap = tip.parentElement;
+        const cr = cell.getBoundingClientRect();
+        const wr = wrap.getBoundingClientRect();
+        tip.style.left = "0px";
+        tip.style.top = "0px";
+        const tw = tip.offsetWidth;
+        const th = tip.offsetHeight;
+        let left = cr.left - wr.left + cr.width / 2 - tw / 2;
+        left = Math.max(4, Math.min(left, wr.width - tw - 4));
+        let top = cr.top - wr.top - th - 8;
+        if (top < 0) top = cr.bottom - wr.top + 8;
+        tip.style.left = `${left}px`;
+        tip.style.top = `${top}px`;
+      };
+
+      const hide = () => { if (tip) tip.hidden = true; };
+
+      grid.addEventListener("mousemove", (ev) => {
+        const cell = ev.target.closest(".cal-cell");
+        if (cell) show(cell); else hide();
+      });
+      grid.addEventListener("mouseleave", hide);
+      grid.addEventListener("focusin", (ev) => {
+        const cell = ev.target.closest(".cal-cell");
+        if (cell) show(cell);
+      });
+      grid.addEventListener("focusout", hide);
+      // Keyboard user reading the tooltip and then scrolling: the tooltip would
+      // otherwise stay pinned where the cell used to be.
+      window.addEventListener("scroll", hide, { passive: true });
+
+      grid.addEventListener("click", (ev) => {
+        const cell = ev.target.closest(".cal-cell");
+        if (!cell) return;
+        hide();
+        pickDay(cell.dataset.day);
+      });
+
+      grid.addEventListener("keydown", (ev) => onCalendarKey(ev, grid));
+    }
+    state._calDays = state._calDays || [];
+  }
+
+  /** Arrow-key navigation over the calendar, one tab stop for the year.
+   *
+   * Horizontal movement is a WEEK (7 cells), vertical movement is a day of the
+   * week, which is how the grid is actually laid out. Boundary cases return
+   * without preventDefault so the page scrolls normally: swallowing arrow keys
+   * at the edge of a widget traps the user (WCAG 1.4.10).
+   */
+  function onCalendarKey(ev, grid) {
+    const keys = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Home", "End"];
+    if (!keys.includes(ev.key)) return;
+    if (ev.altKey || ev.ctrlKey || ev.metaKey) return;
+    const cells = [...grid.querySelectorAll(".cal-cell")];
+    if (!cells.length) return;
+    const current = ev.target.closest(".cal-cell");
+    if (!current) return;
+    const idx = cells.indexOf(current);
+    if (idx < 0) return;
+
+    let next = -1;
+    if (ev.key === "ArrowUp") next = idx - 1;
+    else if (ev.key === "ArrowDown") next = idx + 1;
+    else if (ev.key === "ArrowLeft") next = idx - 7;
+    else if (ev.key === "ArrowRight") next = idx + 7;
+    else if (ev.key === "Home") next = 0;
+    else if (ev.key === "End") next = cells.length - 1;
+
+    if (next < 0 || next >= cells.length) return;   // let the page scroll
+    ev.preventDefault();
+    current.tabIndex = -1;
+    const target = cells[next];
+    target.tabIndex = 0;
+    state._calActive = target;
+    target.focus({ preventScroll: false });
+    target.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }
+
+  /** Fetch and draw one year. */
+  async function loadCalendar(year) {
+    try {
+      const q = year ? `?year=${encodeURIComponent(year)}` : "";
+      const cal = await api(`/api/calendar${q}`);
+      state._calDays = cal.days || [];
+      state._calYear = cal.year;
+      // Read-only handle for the verify script, like __lastTrend.
+      window.__lastCalendar = cal;
+      renderCalendar(cal);
+      const next = $("calNext");
+      const nowYear = Number((cal.today || "").slice(0, 4));
+      // Hide the forward arrow at the current year: there is nothing to show
+      // ahead, and a button that loads an emptier year reads as broken.
+      if (next) next.hidden = !(cal.year < nowYear);
+    } catch (e) {
+      setCalendarStatus(t("status.loadFailed", { err: e.message }));
+    }
   }
 
   /** Write the picker's hint and remember WHICH message it is.
@@ -2601,6 +2916,8 @@
       renderTables(state.data);
       renderFooter();
       renderChart(state.trend || { days: [], agents: [], series: {} });
+      // The calendar's labels and tooltips are built from the string table.
+      if (window.__lastCalendar) renderCalendar(window.__lastCalendar);
       // The status line was written in the previous language; rewrite it so the
       // bar does not keep showing a stale "Loading…" after switching.
       setStatus(t("status.loaded", {
@@ -3102,6 +3419,16 @@
     initDatePicker();
     syncRangeButtons();
     renderDateLabel();
+
+    // The calendar is one request for the whole year, independent of the range
+    // buttons: moving the range must not refetch (or redraw) it.
+    loadCalendar(null);
+    $("calPrev")?.addEventListener("click", () => {
+      if (state._calYear) loadCalendar(state._calYear - 1);
+    });
+    $("calNext")?.addEventListener("click", () => {
+      if (state._calYear) loadCalendar(state._calYear + 1);
+    });
 
     $("langSwitch").addEventListener("click", (ev) => {
       const btn = ev.target.closest("button[data-lang]");

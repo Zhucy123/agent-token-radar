@@ -1225,6 +1225,183 @@
     .share-track { grid-column: 1 / -1; order: 3; }
   }
   .chart-fallback { color: var(--muted); font-size: var(--text-base); }
+
+  /* ---------- calendar heatmap --------------------------------------------
+     One square per day, Monday-first columns so the year reads as a calendar
+     rather than a strip. Squares are sized in rem and the whole grid scales with
+     the text-size setting, like everything else.
+
+     The five shades come from a RANK split (see calendarLevels), not from a
+     linear token scale: one 400M day would otherwise bleach the rest of the
+     year. `color-mix` against the brand colour keeps all five in one hue and
+     survives the dark theme, where a fixed green ramp washes out. */
+  .cal-panel { overflow: visible; }
+  .cal-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-3);
+    margin-block-end: var(--space-3);
+  }
+  .cal-yearnav {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: 3px;
+    background: var(--surface-sunken);
+    border: 1px solid var(--hairline);
+    border-radius: 10px;
+  }
+  .cal-step {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 1.75rem;
+    block-size: 1.75rem;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    padding: 0;
+  }
+  .cal-step:hover { color: var(--ink-ui, var(--text)); background: var(--surface-raised); }
+  .cal-step svg { inline-size: 1rem; block-size: 1rem; }
+  .cal-year {
+    min-inline-size: 3.5em;
+    text-align: center;
+    font-weight: calc(650 * var(--fw-scale, 1));
+    font-variant-numeric: tabular-nums;
+  }
+  .cal-legend {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    margin: 0;
+    margin-inline-start: auto;
+    font-size: var(--text-xs);
+    color: var(--muted);
+  }
+  .cal-swatch {
+    inline-size: .75rem;
+    block-size: .75rem;
+    border-radius: 2px;
+    background: color-mix(in oklab, var(--brand) 12%, var(--surface-sunken));
+    border: 1px solid color-mix(in oklab, var(--hairline) 70%, transparent);
+  }
+  .cal-swatch[data-level="1"] { background: color-mix(in oklab, var(--brand) 32%, var(--surface-sunken)); }
+  .cal-swatch[data-level="2"] { background: color-mix(in oklab, var(--brand) 52%, var(--surface-sunken)); }
+  .cal-swatch[data-level="3"] { background: color-mix(in oklab, var(--brand) 74%, var(--surface-sunken)); }
+  .cal-swatch[data-level="4"] { background: var(--brand); }
+
+  .cal-wrap { position: relative; overflow-x: auto; padding-block-end: var(--space-1); }
+  /* The month strip and the day field are two grids that MUST share a pitch, or
+     a label points at the wrong week (measured before: 17.45px vs 15px per
+     column). Both take the same explicit column count -- set by the renderer
+     from the real number of weeks -- and `minmax(0, 1fr)` splits the same width
+     identically, so 1 Dec sits over the column that holds 1 Dec. */
+  .cal-year-area { flex: 1 1 auto; min-inline-size: 0; }
+  .cal-months,
+  .cal-grid {
+    display: grid;
+    /* A floor on the column width, not a bare 1fr: on a narrow window 53 weeks
+       squeezed into 600px left 7px squares, which are neither readable nor
+       clickable. With a floor the grid keeps its minimum size and the wrapper
+       scrolls sideways instead, which is what a calendar wants. */
+    grid-template-columns: repeat(var(--cal-cols, 53), minmax(0.75rem, 1fr));
+    gap: 2px;
+  }
+  .cal-grid {
+    /* One row per weekday, filled downwards: a column is a week. */
+    grid-auto-flow: column;
+    grid-template-rows: repeat(7, auto);
+  }
+  .cal-months {
+    grid-template-rows: auto;
+    margin-block-end: 2px;
+  }
+  .cal-month {
+    font-size: var(--text-xs);
+    color: var(--muted);
+    line-height: 1;
+    white-space: nowrap;
+    /* A month name is wider than one week column: let it overhang its neighbour
+       rather than widen the column and break the pitch with the grid below. */
+    overflow: visible;
+    position: relative;
+    z-index: 1;
+  }
+  .cal-body { display: flex; gap: var(--space-2); align-items: flex-start; }
+  .cal-weekdays {
+    display: grid;
+    grid-template-rows: repeat(7, auto);
+    gap: 2px;
+    font-size: var(--text-xs);
+    color: var(--muted);
+    /* Third row (Wed) and fifth (Fri); the rest stay blank but keep the pitch. */
+    align-content: start;
+  }
+  .cal-weekdays span:first-child { grid-row: 1; }
+  .cal-weekdays span:nth-child(2) { grid-row: 3; }
+  .cal-weekdays span:nth-child(3) { grid-row: 5; }
+  .cal-cell {
+    /* Square, and it fills its grid column. `aspect-ratio` keeps it square when
+       the column stretches to use the panel's full width -- with a fixed 13px
+       side the year only covered half the panel, leaving the rest empty. */
+    inline-size: 100%;
+    aspect-ratio: 1;
+    padding: 0;
+    border: 0;
+    border-radius: 2px;
+    cursor: pointer;
+    background: color-mix(in oklab, var(--brand) 12%, var(--surface-sunken));
+    /* A visible edge, so a quiet day still reads as a square on a light page. */
+    box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--hairline) 70%, transparent);
+  }
+  .cal-cell[data-level="1"] { background: color-mix(in oklab, var(--brand) 32%, var(--surface-sunken)); }
+  .cal-cell[data-level="2"] { background: color-mix(in oklab, var(--brand) 52%, var(--surface-sunken)); }
+  .cal-cell[data-level="3"] { background: color-mix(in oklab, var(--brand) 74%, var(--surface-sunken)); }
+  .cal-cell[data-level="4"] { background: var(--brand); }
+  .cal-cell:hover { outline: 2px solid var(--brand); outline-offset: 1px; }
+  .cal-cell:focus-visible {
+    outline: 2px solid var(--text);
+    outline-offset: 2px;
+    /* Focus must be findable in a field of 365 nearly identical squares. */
+    z-index: 1;
+  }
+  /* Today gets a ring rather than a different colour: colour already means
+     "how much", and overloading it would make today look like its own band. */
+  .cal-cell[data-today="1"] { box-shadow: inset 0 0 0 2px var(--text); }
+  .cal-pad { inline-size: 100%; aspect-ratio: 1; }
+
+  .cal-tip {
+    position: absolute;
+    z-index: 4;
+    pointer-events: none;
+    background: var(--surface-raised);
+    color: var(--ink-ui, var(--text));
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-sm);
+    padding: var(--space-2) var(--space-3);
+    font-size: var(--text-sm);
+    line-height: 1.6;
+    box-shadow: var(--shadow-2);
+    max-inline-size: 18rem;
+  }
+  .cal-status { margin: var(--space-2) 0 0; font-size: var(--text-xs); color: var(--muted); }
+
+  /* The squares are a pointer target (a day is a realistic click, not a
+     preference), but 13px is far too small to tap. Give the CELLS a 44px row
+     pitch on touch by scaling them up: the calendar is then wider than the
+     panel, which already scrolls sideways, so the layout survives. */
+  @media (pointer: coarse) {
+    .cal-step { inline-size: 2.75rem; block-size: 2.75rem; }
+    .cal-swatch { inline-size: 1rem; block-size: 1rem; }
+    /* The squares fill their column, so on a phone the weeks simply get wider
+       and the panel scrolls sideways; only the gap needs a touch more air. */
+    .cal-months, .cal-grid, .cal-weekdays { gap: 3px; }
+  }
+
   .chart-tip {
     position: absolute;
     z-index: 3;
@@ -1245,6 +1422,11 @@
   }
   .chart-tip .tip-head { font-weight: calc(650 * var(--fw-scale, 1)); margin-block-end: 2px; }
   .chart-tip .tip-row { display: flex; align-items: center; gap: var(--space-1); }
+  /* The calendar's tooltip reuses the .tip-head/.tip-row markup, but those rules
+     are scoped to .chart-tip -- so without these the lines ran together as
+     "826,505 Token约 $0.0032" with no break. */
+  .cal-tip .tip-head { font-weight: calc(650 * var(--fw-scale, 1)); margin-block-end: 2px; }
+  .cal-tip .tip-row { display: block; font-variant-numeric: tabular-nums; }
   /* The fold-in row for a bar split across more Agents than fit. */
   .chart-tip .tip-more { color: var(--muted); font-style: italic; }
   .chart-legend {

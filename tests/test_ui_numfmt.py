@@ -119,13 +119,19 @@ class SharedSegmentStyleTests(unittest.TestCase):
 
     def test_it_meets_the_touch_target(self) -> None:
         """The coarse-pointer block lists controls by name; a new one that is
-        not added there stays at its 34px desktop height on a phone."""
+        not added there stays at its 34px desktop height on a phone.
+
+        Every `@media (pointer: coarse)` block is collected, not just the first:
+        a second block further down the file is equally in effect, and matching
+        only the first one made this assertion fail for a real but harmless
+        reason the moment another component added its own touch tweaks.
+        """
         css = _css()
-        m = re.search(r"@media \(pointer: coarse\)\s*\{(.*?)\n  \}", css, re.S)
-        self.assertIsNotNone(m)
-        block = m.group(1)
-        self.assertIn(".num-switch button", block,
-                      "the number switch must be in the coarse-pointer block "
+        blocks = re.findall(r"@media \(pointer: coarse\)\s*\{(.*?)\n  \}", css, re.S)
+        self.assertTrue(blocks, "no coarse-pointer block found")
+        combined = "\n".join(blocks)
+        self.assertIn(".num-switch button", combined,
+                      "the number switch must be in a coarse-pointer block "
                       "or it stays 34px on touch")
 
 

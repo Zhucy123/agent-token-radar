@@ -270,6 +270,59 @@
     <p class="note" id="cost-note" data-i18n="summary.note">注：Total = 输入 + 缓存读取 + 缓存写入 + 输出；推理是 Output 的细分项，不重复计入。缓存命中 = 缓存读取 ÷（输入 + 缓存读取）。费用按各厂商官方标价 × Token 估算，不代表实际账单。</p>
   </section>
 
+  <!-- Calendar heatmap. One square per day, Monday-first weeks, so a whole year
+       fits on one screen and the busy periods are visible at a glance -- which a
+       bar chart over 365 days cannot do. It is a separate section rather than a
+       replacement for the range buttons: the presets answer "last 7 days", the
+       calendar answers "when in the year", and both are legitimate questions. -->
+  <section aria-labelledby="calendar-title">
+    <h2 id="calendar-title" class="section-title" data-i18n="sec.calendar">用量日历</h2>
+    <div class="panel cal-panel">
+      <div class="cal-head">
+        <div class="cal-yearnav" role="group" data-i18n-aria="cal.yearNav">
+          <button type="button" id="calPrev" class="cal-step" data-i18n-aria="cal.prevYear">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M15 18l-6-6 6-6"/>
+            </svg>
+          </button>
+          <span id="calYearLabel" class="cal-year">—</span>
+          <button type="button" id="calNext" class="cal-step" data-i18n-aria="cal.nextYear">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M9 6l6 6-6 6"/>
+            </svg>
+          </button>
+        </div>
+        <p class="cal-legend">
+          <span data-i18n="cal.less">少</span>
+          <span class="cal-swatch" data-level="0" aria-hidden="true"></span>
+          <span class="cal-swatch" data-level="1" aria-hidden="true"></span>
+          <span class="cal-swatch" data-level="2" aria-hidden="true"></span>
+          <span class="cal-swatch" data-level="3" aria-hidden="true"></span>
+          <span class="cal-swatch" data-level="4" aria-hidden="true"></span>
+          <span data-i18n="cal.more">多</span>
+        </p>
+      </div>
+      <div class="cal-wrap">
+        <!-- The weekday gutter and the year sit side by side. Inside the year,
+             the month strip and the day field are two grids with the SAME column
+             template and the same width, so a label can never drift away from
+             the week it names. -->
+        <div class="cal-body">
+          <div id="calWeekdays" class="cal-weekdays" aria-hidden="true"></div>
+          <div class="cal-year-area">
+            <div id="calMonthRow" class="cal-months" aria-hidden="true"></div>
+            <div id="calGrid" class="cal-grid" role="grid"
+                 aria-labelledby="calendar-title" data-i18n-aria="cal.grid"></div>
+          </div>
+        </div>
+        <div id="calTip" class="cal-tip" hidden></div>
+      </div>
+      <p id="calStatus" class="cal-status" role="status" aria-live="polite"></p>
+    </div>
+  </section>
+
   <!-- Trend -->
   <section aria-labelledby="trend-title">
     <h2 id="trend-title" class="section-title" data-i18n="sec.trend">消耗趋势（按 Agent 堆叠）</h2>

@@ -290,6 +290,71 @@ class DashboardState:
         }
 
 
+    def calendar(self, year: str | None = None) -> dict[str, Any]:
+        """A whole year of daily totals, for the calendar heatmap.
+
+        The calendar needs EMPTY days as well as used ones: a heatmap that only
+        plots days with data would look like a calendar with holes instead of a
+        calendar with quiet days. So the response carries a dense week grid the
+        page can draw directly, and the page never has to know about months,
+        leap years or which weekday the 1st falls on.
+
+        ``year`` defaults to the current one in the user's local time. It is
+        validated rather than trusted: an unparseable value falls back to this
+        year instead of raising, because a bad query string here should not take
+        the whole dashboard down.
+        """
+        tz = _local_offset_ms()
+        today = dt.datetime.now().astimezone().date()
+        wanted = today.year
+        if year:
+            try:
+                parsed = int(str(year).strip())
+            except (TypeError, ValueError):
+                parsed = wanted
+            # A local desktop tool has no use for year 12 or year 99999.
+            if 1970 <= parsed <= 9999:
+                wanted = parsed
+
+        start = dt.datetime.combine(dt.date(wanted, 1, 1), dt.time.min).astimezone()
+        end = dt.datetime.combine(dt.date(wanted + 1, 1, 1), dt.time.min).astimezone()
+        rows = self.store.daily_totals(
+            since_ms=int(start.timestamp() * 1000),
+            until_ms=int(end.timestamp() * 1000),
+            tz_offset_ms=tz,
+        )
+        by_day = {r["day"]: r for r in rows}
+
+        # Dense grid: one entry per day of the year, Monday-first weeks, so the
+        # page can lay out columns as weeks without any date maths of its own.
+        # 1 Jan 1970 was a Thursday; Python's %w is Sunday=0, so convert.
+        days: list[dict[str, Any]] = []
+        cursor = dt.date(wanted, 1, 1)
+        one = dt.timedelta(days=1)
+        while cursor.year == wanted:
+            hit = by_day.get(cursor.isoformat())
+            days.append({
+                "day": cursor.isoformat(),
+                "weekday": (cursor.weekday()),          # Mon=0 .. Sun=6
+                "total_tokens": int(hit["total_tokens"]) if hit else 0,
+                "events": int(hit["events"]) if hit else 0,
+                "cost_usd": hit["cost_usd"] if hit else None,
+                "priced_ratio": float(hit["priced_ratio"]) if hit else 0.0,
+                "has_data": hit is not None,
+            })
+            cursor += one
+
+        # The scale the squares are coloured by: the busiest day of the year.
+        # Zero when nothing has been recorded, so the page does not divide by it.
+        peak = max((d["total_tokens"] for d in days), default=0)
+        return {
+            "year": wanted,
+            "today": today.isoformat(),
+            "days": days,
+            "peak_tokens": peak,
+        }
+
+
 def create_app(scan_interval: int = 30) -> FastAPI:
     state = DashboardState(scan_interval=scan_interval)
 
@@ -335,6 +400,10 @@ def create_app(scan_interval: int = 30) -> FastAPI:
             return JSONResponse(state.trend(range, since, until))
         except ValueError as exc:
             return _bad_range(exc)
+
+    @app.get("/api/calendar")
+    def calendar(year: str | None = Query(None)) -> JSONResponse:
+        return JSONResponse(state.calendar(year))
 
     @app.get("/api/scan/status")
     def status() -> JSONResponse:
