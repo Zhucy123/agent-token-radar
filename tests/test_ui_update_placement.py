@@ -267,21 +267,44 @@ class UpdateFailureMessageTests(unittest.TestCase):
             js.count("failureText("), 3,
             "expected the definition plus both apply paths to call it")
 
-    def test_caught_error_is_surfaced_not_swallowed(self) -> None:
-        """api() throws '409 Conflict' for the source build; that must show."""
+    def test_a_rejected_apply_reads_the_reason_from_the_body(self) -> None:
+        """A 409 must show the reason, not 'Update failed: 409 Conflict'.
+
+        api() throws on any non-2xx and drops the JSON. The apply button now
+        uses fetch so the body (reason: not_installed / no_update / ...)
+        reaches failureText and can be translated.
+        """
         js = _js()
-        # The polling GET shares this path prefix, so anchor on the POST.
-        start = js.index('api("/api/update/apply", { method: "POST" })')
-        block = js[start:start + 900]
+        start = js.index('fetch("/api/update/apply", { method: "POST" })')
+        block = js[start:start + 1200]
+        self.assertIn("body.reason", block,
+                      "the 409 body carries the reason code")
+        self.assertIn("failureText(", block)
         self.assertIn("catch (e)", block,
-                      "the catch must bind the error, not discard it")
-        self.assertIn("failureText(e && e.message)", block,
-                      "the HTTP status is the only detail available there")
+                      "a network failure must still bind the error")
 
     def test_no_detail_message_exists_in_both_languages(self) -> None:
         for lang in ("zh", "en"):
             self.assertIn("update.applyFailedNoDetail", STRINGS[lang])
             self.assertTrue(STRINGS[lang]["update.applyFailedNoDetail"].strip())
+
+    def test_error_codes_have_a_sentence_in_both_languages(self) -> None:
+        """The codes the server now sends must not fall back to a raw id."""
+        keys = [
+            "update.alreadyLatest", "update.noInstaller",
+            "update.errNotHttps", "update.errRedirectNotHttps",
+            "update.errTooLarge", "update.errDownloadFailed",
+            "update.errEmptyFile", "update.errSizeMismatch",
+            "update.errMissingFile",
+        ]
+        for key in keys:
+            for lang in ("zh", "en"):
+                self.assertIn(key, STRINGS[lang], f"{key} missing from {lang}")
+                self.assertTrue(STRINGS[lang][key].strip(), f"{key} blank in {lang}")
+            self.assertRegex(STRINGS["zh"][key], r"[一-鿿]",
+                             f"{key} has no Chinese in zh")
+            self.assertNotRegex(STRINGS["en"][key], r"[一-鿿]",
+                                f"{key} leaks Chinese into en")
 
 
 class UpdateTranslationTests(unittest.TestCase):

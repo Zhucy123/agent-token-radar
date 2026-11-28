@@ -75,7 +75,7 @@ class _FakeResponse:
 class DownloadTests(_TmpDownloads):
     def _serve(self, payload: bytes, declared: int | None = None):
         return mock.patch.object(
-            updater.urllib.request, "urlopen",
+            updater, "_urlopen",
             return_value=_FakeResponse(payload, declared))
 
     def test_downloads_to_a_temp_path_and_reports_size(self) -> None:
@@ -95,19 +95,18 @@ class DownloadTests(_TmpDownloads):
         would still "pass" by hitting a real network error, which proves nothing
         about the scheme check.
         """
-        with mock.patch.object(updater.urllib.request, "urlopen") as urlopen:
+        with mock.patch.object(updater, "_urlopen") as urlopen:
             with self.assertRaises(updater.UpdateError) as cm:
                 updater.download_installer("http://example/x.exe")
         urlopen.assert_not_called()
-        self.assertIn("HTTPS", str(cm.exception))
+        self.assertEqual(cm.exception.code, "not_https")
         self.assertFalse(self._path().exists())
 
     def test_rejects_non_https_schemes_generically(self) -> None:
         for url in ("http://x/y.exe", "ftp://x/y.exe", "file:///c:/y.exe",
                     "x.exe", ""):
             with self.subTest(url=url):
-                with mock.patch.object(updater.urllib.request,
-                                       "urlopen") as urlopen:
+                with mock.patch.object(updater, "_urlopen") as urlopen:
                     with self.assertRaises(updater.UpdateError):
                         updater.download_installer(url)
                 urlopen.assert_not_called()
@@ -131,17 +130,21 @@ class DownloadTests(_TmpDownloads):
     def test_oversized_response_is_refused(self) -> None:
         with mock.patch.object(updater, "MAX_INSTALLER_BYTES", 10):
             with self._serve(b"y" * 100):
-                with self.assertRaises(updater.UpdateError):
+                with self.assertRaises(updater.UpdateError) as cm:
                     updater.download_installer("https://example/x.exe")
+        self.assertEqual(cm.exception.code, "too_large")
         self.assertFalse(self._path().exists())
+        self.assertFalse(self._path().with_suffix(".part").exists(),
+                         "a refused oversized download must not leave a .part file")
 
     def test_network_error_becomes_a_user_message(self) -> None:
         with mock.patch.object(
-                updater.urllib.request, "urlopen",
+                updater, "_urlopen",
                 side_effect=OSError("no route")):
             with self.assertRaises(updater.UpdateError) as cm:
                 updater.download_installer("https://example/x.exe")
-        self.assertIn("下载失败", str(cm.exception))
+        self.assertEqual(cm.exception.code, "download_failed")
+        self.assertIn("no route", cm.exception.params["detail"])
 
     def test_partial_file_is_not_named_like_a_finished_one(self) -> None:
         """While writing, the target name must not exist."""
@@ -167,11 +170,30 @@ class DownloadTests(_TmpDownloads):
             captured["timeout"] = timeout
             return _FakeResponse(b"q" * 32)
 
-        with mock.patch.object(updater.urllib.request, "urlopen", fake):
+        with mock.patch.object(updater, "_urlopen", fake):
             updater.download_installer("https://example/x.exe")
         self.assertTrue(captured["ua"])
         self.assertIn("agent-token-radar", captured["ua"])
         self.assertEqual(captured["timeout"], updater.DOWNLOAD_TIMEOUT_SECONDS)
+
+
+    def test_https_to_http_redirect_is_refused(self) -> None:
+        """The original URL being HTTPS is not enough if a 302 leaves it."""
+        handler = updater._HttpsOnlyRedirectHandler()
+        req = updater.urllib.request.Request("https://example/x.exe")
+        with self.assertRaises(updater.UpdateError) as cm:
+            handler.redirect_request(
+                req, None, 302, "Found", {}, "http://evil.example/x.exe")
+        self.assertEqual(cm.exception.code, "redirect_not_https")
+
+    def test_https_to_https_redirect_is_allowed(self) -> None:
+        handler = updater._HttpsOnlyRedirectHandler()
+        req = updater.urllib.request.Request("https://example/x.exe")
+        nxt = handler.redirect_request(
+            req, None, 302, "Found", {},
+            "https://objects.githubusercontent.com/x.exe")
+        self.assertIsNotNone(nxt)
+        self.assertTrue(nxt.full_url.startswith("https://"))
 
 
 class LaunchTests(_TmpDownloads):

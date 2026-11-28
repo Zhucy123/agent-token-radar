@@ -2802,7 +2802,8 @@
     const date = shortDay2(d.day);
     const wd = t(`cal.w${d.weekday}`);
     const head = t("cal.tip", { date, weekday: wd });
-    if (!d.total_tokens) return `${head}，${t("cal.tipEmpty")}`;
+    const sep = t("cal.tipSep");
+    if (!d.total_tokens) return `${head}${sep}${t("cal.tipEmpty")}`;
     const parts = [t("cal.tipTokens", { tokens: fmt(d.total_tokens) })];
     if (d.cost_usd === null || d.cost_usd === undefined) {
       parts.push(t("cal.tipNoPrice"));
@@ -2812,7 +2813,7 @@
         parts.push(t("cal.tipPartial", { pct: pct(d.priced_ratio) }));
       }
     }
-    return `${head}，${parts.join("，")}`;
+    return `${head}${sep}${parts.join(sep)}`;
   }
 
   /** MM-DD (the year is already the heading). */
@@ -3468,7 +3469,25 @@
     // than a generic one: it looks like the app broke without saying how. The
     // server always sends a reason, but a bare 409 from an older build, or an
     // exception with an empty string, would otherwise render as a blank.
-    const failureText = (err) => {
+    //
+    // Prefer a language-independent error code: the installer errors used to be
+    // hardcoded Chinese, so an English UI showed "Update failed: 下载失败：...".
+    const UPDATE_ERROR_KEYS = {
+      not_https: "update.errNotHttps",
+      redirect_not_https: "update.errRedirectNotHttps",
+      too_large: "update.errTooLarge",
+      download_failed: "update.errDownloadFailed",
+      empty_file: "update.errEmptyFile",
+      size_mismatch: "update.errSizeMismatch",
+      missing_file: "update.errMissingFile",
+      not_installed: "update.sourceHint",
+      no_update: "update.alreadyLatest",
+      no_installer: "update.noInstaller",
+      disabled: "update.disabled",
+    };
+    const failureText = (err, code, params) => {
+      const key = code && UPDATE_ERROR_KEYS[code];
+      if (key) return t(key, params || {});
       const detail = (err == null ? "" : String(err)).trim();
       return detail
         ? t("update.applyFailed", { err: detail })
@@ -3498,7 +3517,7 @@
           }
           return; // the installer owns the rest
         } else if (s.phase === "failed") {
-          if (line) line.textContent = failureText(s.error);
+          if (line) line.textContent = failureText(s.error, s.error_code, s.error_params);
           if (applyBtn) applyBtn.disabled = false;
           return;
         }
@@ -3514,17 +3533,26 @@
           renderUpdate({ ...lastStatus, state: "checking" });
         }
         try {
-          const r = await api("/api/update/apply", { method: "POST" });
-          if (!r || !r.ok) {
+          // Use fetch, not api(): api() throws on 409 and drops the JSON body,
+          // so the panel used to show "Update failed: 409 Conflict" instead of
+          // the reason (not installed / already latest / no installer).
+          const resp = await fetch("/api/update/apply", { method: "POST" });
+          let body = null;
+          try { body = await resp.json(); } catch { body = null; }
+          if (!resp.ok || !body || !body.ok) {
             const line = $("updateStatus");
-            if (line) line.textContent = failureText(r && r.message);
+            if (line) {
+              line.textContent = failureText(
+                body && body.message,
+                body && body.reason,
+                body && body.params,
+              );
+            }
             applyBtn.disabled = false;
             return;
           }
           watchApply();
         } catch (e) {
-          // api() throws on any non-2xx, so the reason arrives as "409 Conflict"
-          // rather than the JSON body. Showing that is still better than a blank.
           const line = $("updateStatus");
           if (line) line.textContent = failureText(e && e.message);
           applyBtn.disabled = false;
