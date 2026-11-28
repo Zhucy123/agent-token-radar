@@ -472,6 +472,15 @@
     // draw time, so both settings must force a redraw (same reasoning as the
     // prefers-color-scheme listener).
     if (state.trend) renderChart(state.trend);
+    // A text-size change re-sizes every square, so the year can suddenly fit a
+    // different number of week columns than the one it was parked on. Ask for a
+    // placement HERE rather than relying on the ResizeObserver: this is the one
+    // moment the change is known to have happened, and the observer is not
+    // dependable for it (measured in the browser check: after two font-size
+    // changes the observer stopped calling back altogether, leaving the panel on
+    // the previous size's columns). placeIfChanged compares measured geometry,
+    // so the extra call costs nothing when nothing moved.
+    if (state.calendar && setting.key === "fs") revealCalendarData(state.calendar);
   }
 
   function applyAllSettings() {
@@ -2586,7 +2595,201 @@
     state._calActive = active;
 
     wireCalendar(grid);
+    revealCalendarData(cal);
   }
+
+  /** The layout the reveal depends on, measured from real boxes.
+   *
+   * `pitch` is the distance between two week columns AS LAID OUT. It has to be a
+   * measurement: the root font size and the wrapper width both update in the
+   * same frame as a text-size change while the squares can still be on screen at
+   * their old size, so any value derived from them describes a grid that is not
+   * there (traced: the derived key said 14px while the boxes said 17.594px).
+   */
+  function calendarLayout() {
+    const wrap = document.querySelector(".cal-wrap");
+    const grid = $("calGrid");
+    if (!wrap || !grid) return null;
+    const cells = [...grid.children];
+    if (cells.length < 8) return null;
+    const gl = grid.getBoundingClientRect().left;
+    const at = (c) => cells[Math.min(cells.length - 1, c * 7)]
+      .getBoundingClientRect().left - gl;
+    const pitch = at(1) - at(0);
+    if (!(pitch > 0)) return null;
+    return { wrap, grid, cells, pitch };
+  }
+
+  /* What was placed last. Kept OUTSIDE the placement so a second call with the
+     same geometry can be a no-op -- that is what stops the panel from being
+     yanked back to the busy weeks whenever something unrelated re-renders. */
+  let lastPlaced = { pitch: -1, width: -1, year: null, days: -1 };
+
+  /** Re-place the year, but only if the grid is really a different size.
+   *
+   * The trigger is the MEASURED geometry, never "a resize event happened": a
+   * language or number-format re-render fires no resize at all, and a text-size
+   * change fires one before the squares have moved. Comparing against what was
+   * last placed means a stale read does nothing and a later correct read fixes
+   * it, without any of this being able to fight a reader's own scroll.
+   *
+   * The YEAR has to be part of that comparison, not just the geometry: a 365-day
+   * year and a 366-day one are laid out at the same pitch, so switching years
+   * changes no measurement while changing which weeks are busy. Leaving it out
+   * meant "previous year" kept the old year's scroll offset -- pointing at the
+   * far right of a year that had nothing recorded at all (measured: 303px into
+   * an empty 2025). It is identified by year plus day count, because the same
+   * year re-fetched is the same calendar and must not disturb a reader.
+   */
+  function placeIfChanged() {
+    const cal = window.__lastCalendar;
+    if (!cal) return;
+    window.__calStats.checks += 1;
+    const lay = calendarLayout();
+    if (!lay) return;
+    const width = lay.wrap.clientWidth;
+    const days = (cal.days || []).length;
+    if (Math.abs(lay.pitch - lastPlaced.pitch) <= 0.01
+        && Math.abs(width - lastPlaced.width) <= 0.5
+        && cal.year === lastPlaced.year
+        && days === lastPlaced.days) return;
+    lastPlaced = { pitch: lay.pitch, width, year: cal.year, days };
+    window.__calStats.placements += 1;
+    placeCalendarReveal(cal, lay);
+  }
+
+  /** Called by the renderer (the grid was just rebuilt) and by the calendar's
+   * ResizeObserver (the panel changed size).
+   *
+   * The ResizeObserver is the primary trigger: it fires AFTER layout, so the
+   * columns it reports are the ones on screen. Two one-shot timers follow, and
+   * they are deliberately NOT a chain: a re-render can settle a frame or two
+   * after the observer's callback (web fonts, a wrapped label), and a chained
+   * poll is unreliable here -- with the page in a background window Chromium
+   * clamps nested timers to one second apiece, so a 15-step 100ms poll took over
+   * ten seconds and the placement sometimes never ran before the reader looked.
+   */
+  function revealCalendarData(cal) {
+    if (!cal) return;
+    placeIfChanged();
+    setTimeout(placeIfChanged, 250);
+    setTimeout(placeIfChanged, 900);
+  }
+
+  /** Read-only diagnostic for the verify script: was the placement ever asked
+   * to run, and did it ever decide anything? Without this a browser check cannot
+   * tell "nothing moved because nothing was needed" apart from "nothing moved
+   * because the trigger never fired", and the second one is a bug.
+   */
+  window.__calStats = { checks: 0, placements: 0 };
+
+  /** Scroll the year sideways so the VISIBLE weeks are the busy ones.
+   *
+   * A year is 53 week columns and does not fit a narrow window, so the panel
+   * scrolls sideways. A scroll container starts at its left edge -- January --
+   * and in January of a fresh year there is usually nothing recorded yet, so a
+   * reader on a laptop was shown a screen of empty squares and had to hunt
+   * sideways for the data. This slides to the window of columns holding the most
+   * active days instead: the first thing on screen is where the year was actually
+   * used.
+   *
+   * The anchor is a WINDOW of columns, not a single day. Centring on today was
+   * the earlier attempt and it is wrong as soon as today is quiet: it still
+   * scrolled (today exists) but landed on a stretch of the year with nothing in
+   * it. Counting active days per column and taking the widest sum is what the
+   * reader is actually looking for.
+   *
+   * Nothing happens when the whole year fits, and nothing happens when the year
+   * has no usage at all (there is no busy side to move to, so the left edge --
+   * where the year starts -- stays). It is only ever called when the measured
+   * geometry changed, so a reader who has scrolled somewhere on purpose keeps
+   * their place: a language or number-format re-render resizes nothing.
+   */
+  function placeCalendarReveal(cal, lay) {
+    const { wrap, cells, pitch } = lay;
+    // Any early return below means "nothing to place", so the handle must not
+    // keep describing a layout from an earlier width.
+    window.__calReveal = null;
+
+    const days = cal.days || [];
+    if (!days.length) return;
+    const settle = (target) => {
+      const maxScroll = Math.max(0, wrap.scrollWidth - wrap.clientWidth);
+      wrap.scrollLeft = Math.max(0, Math.min(target, maxScroll));
+    };
+
+    const overflow = wrap.scrollWidth - wrap.clientWidth;
+    if (overflow <= 1) { settle(0); return; }
+
+    const firstWeekday = days[0].weekday || 0;
+    const cols = Math.ceil((days.length + firstWeekday) / 7);
+    const active = new Array(cols).fill(0);
+    days.forEach((d, i) => {
+      if (d.total_tokens > 0) active[Math.floor((i + firstWeekday) / 7)] += 1;
+    });
+    if (!active.some((n) => n > 0)) { settle(0); return; }
+
+    // The weekday gutter is sticky and sits ON TOP of the scroller, so the part
+    // of a week column behind it cannot be read. Count from where the squares
+    // actually start being visible, not from the panel's left edge.
+    const gutter = document.getElementById("calWeekdays");
+    const gutterW = gutter ? gutter.getBoundingClientRect().width + 8 : 0;
+    const usable = wrap.clientWidth - gutterW;
+
+    // How many whole columns fit. The 2px credit covers the trailing gap so a
+    // column is not dropped for rounding alone.
+    const visible = Math.max(
+      1, Math.min(cols, Math.floor((usable + 2) / pitch)));
+    if (visible >= cols) { settle(0); return; }
+
+    // Widest sum over a sliding window of `visible` columns. Ties go to the
+    // LATER window: the same number of active days is worth more when it is
+    // recent, and that is also the side "today" lives on.
+    let bestStart = 0;
+    let bestScore = -1;
+    let running = 0;
+    for (let c = 0; c < cols; c++) {
+      running += active[c];
+      if (c >= visible) running -= active[c - visible];
+      if (c >= visible - 1) {
+        if (running >= bestScore) {
+          bestScore = running;
+          bestStart = c - visible + 1;
+        }
+      }
+    }
+
+    // Move by a DELTA measured on screen rather than computing an absolute
+    // offset: the gutter width, the panel padding and the grid's own gap are all
+    // already reflected in where the first column currently sits. `settle`
+    // clamps, so a run can never fling the panel past the end.
+    const visStart = wrap.getBoundingClientRect().left + gutterW;
+    const delta = cells[Math.min(cells.length - 1, bestStart * 7)]
+      .getBoundingClientRect().left - visStart;
+    settle(wrap.scrollLeft + delta);
+
+    // Read-only handle for the verify script, like __lastTrend/__lastCalendar.
+    window.__calReveal = {
+      year: cal.year, cols, visible, startColumn: bestStart,
+      activeInWindow: bestScore,
+      activeTotal: active.reduce((a, b) => a + b, 0),
+      scrollLeft: wrap.scrollLeft,
+      maxScroll: Math.max(0, wrap.scrollWidth - wrap.clientWidth),
+      overflow, gutterW, pitch,
+    };
+  }
+
+  /** Test hook, like __lastTrend/__lastData/__fitCardNumbers: a browser check has
+   * to be able to force one placement against the CURRENT layout and read back
+   * what it decided. Nothing in the app reads this.
+   */
+  window.__revealCalendar = () => {
+    const lay = calendarLayout();
+    if (lay && window.__lastCalendar) {
+      placeCalendarReveal(window.__lastCalendar, lay);
+    }
+    return window.__calReveal;
+  };
 
   /** Which grid column a cell lands in (1-based). */
   function columnOf(cell, grid) {
@@ -2664,18 +2867,37 @@
           }
           tip.appendChild(cost);
         }
-        // Place it above the cell, clamped to the panel so it never runs off.
-        const wrap = tip.parentElement;
+        // Place it above the cell, clamped so it never runs off the panel.
+        //
+        // The tooltip's offset parent is the PANEL, not the scroller: the
+        // scroller has `overflow-x: auto`, which coerces its other axis to
+        // `auto` too, so a tooltip inside it was clipped at the bottom AND
+        // pushed a vertical scrollbar onto the whole calendar (seen on a
+        // 1200px window: the box ran 762px against a scroller ending at 814px
+        // for the tall case and got cut). The panel's own padding is therefore
+        // in the coordinate space and has to be subtracted.
+        const panel = $("calPanel") || tip.parentElement;
         const cr = cell.getBoundingClientRect();
-        const wr = wrap.getBoundingClientRect();
+        const pr = panel.getBoundingClientRect();
+        const pcs = getComputedStyle(panel);
+        const padL = parseFloat(pcs.paddingLeft) || 0;
+        const padT = parseFloat(pcs.paddingTop) || 0;
         tip.style.left = "0px";
         tip.style.top = "0px";
         const tw = tip.offsetWidth;
         const th = tip.offsetHeight;
-        let left = cr.left - wr.left + cr.width / 2 - tw / 2;
-        left = Math.max(4, Math.min(left, wr.width - tw - 4));
-        let top = cr.top - wr.top - th - 8;
-        if (top < 0) top = cr.bottom - wr.top + 8;
+        // Client box of the panel, in the same space as `left`/`top`.
+        const innerW = panel.clientWidth - padL - (parseFloat(pcs.paddingRight) || 0);
+        const boxTop = pr.top + padT + panel.clientTop;
+        const boxBottom = pr.top + panel.clientTop + panel.clientHeight
+          - (parseFloat(pcs.paddingBottom) || 0);
+        let left = cr.left - (pr.left + padL + panel.clientLeft) + cr.width / 2 - tw / 2;
+        left = Math.max(4, Math.min(left, innerW - tw + 4));
+        // Above the square by default; below it when there is no room above.
+        let top = cr.top - th - 8 - boxTop;
+        if (cr.top - th - 8 < boxTop) top = cr.bottom + 8 - boxTop;
+        // Last resort for a very short panel: pin it inside the box.
+        top = Math.max(0, Math.min(top, boxBottom - boxTop - th));
         tip.style.left = `${left}px`;
         tip.style.top = `${top}px`;
       };
@@ -2753,6 +2975,7 @@
       state._calYear = cal.year;
       // Read-only handle for the verify script, like __lastTrend.
       window.__lastCalendar = cal;
+      state.calendar = cal;
       renderCalendar(cal);
       const next = $("calNext");
       const nowYear = Number((cal.today || "").slice(0, 4));
@@ -3393,6 +3616,33 @@
         state._cardObserver.observe(cardsEl);
       }
       window.addEventListener("resize", refit, { passive: true });
+
+      // A narrower window fits fewer week columns, so which columns are worth
+      // showing changes with it, and a text-size change resizes the panel too.
+      //
+      // Observe the GRID as well as the scroller, and that is not belt-and-
+      // braces: the squares are sized in rem while the scroller is a flex item
+      // of fixed height, so a text-size change makes the grid TALLER and WIDER
+      // while `.cal-wrap`'s own box can keep the exact same size. Watching only
+      // the wrapper therefore fires for a window resize but stays silent for a
+      // font-size change, which is precisely the case this has to get right
+      // (measured: 25 checks, 5 placements, and a handle still reporting the
+      // 14px pitch of the previous size while the boxes said 17.594px).
+      //
+      // Both callbacks fire AFTER layout, so the geometry they lead to is the
+      // one on screen; placeIfChanged then compares it against what it placed
+      // last, which is what lets a stale read do nothing rather than parking the
+      // panel in the wrong place. Nothing listens for scroll, so a reader's own
+      // horizontal scroll is never undone underneath them.
+      const calWrap = document.querySelector(".cal-wrap");
+      const calGrid = $("calGrid");
+      if (calWrap) {
+        state._calObserver = new ResizeObserver(() => placeIfChanged());
+        state._calObserver.observe(calWrap);
+        if (calGrid) state._calObserver.observe(calGrid);
+      }
+      window.addEventListener("resize", () => placeIfChanged(),
+                              { passive: true });
     }
 
     await setLang(state.lang);

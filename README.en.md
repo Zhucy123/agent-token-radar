@@ -240,6 +240,34 @@ repeated scan upserts instead of double-counting.
 
 ## Changelog
 
+### 0.0.6
+
+**Added**
+
+- **A year-long usage calendar**: a heatmap above the trend chart, one square per
+  day. Days with records are shaded in five bands by rank, so the shape of the
+  year is visible at once; hovering or focusing a square shows that day's tokens,
+  cost and pricing coverage. Clicking a day jumps to it.
+- The calendar pages back through earlier years, and the arrow keys move within
+  the year. The whole year is a single tab stop, so it does not bury everything
+  after it.
+
+**Fixed**
+
+- **On a narrow window the calendar opened on a screen of empty squares.** The
+  year is wider than the window and a scroller starts at its left edge —
+  January — where a fresh year usually holds nothing. It now parks on the
+  window of weeks holding the **most active days**.
+- **The calendar looked blurry**: the palest band was a 1px inner ring, which
+  turns into a grey halo at fractional display scales. It is a solid fill now,
+  and the weekday and month labels line up with the rows and columns they name.
+- **Changing the text size left the calendar parked on the old columns**: the
+  squares are sized in rem, so a new text size means a new column width and a
+  different number of columns that fit. The old code judged this from a derived
+  value rather than a measurement and got a 14px pitch where the boxes said
+  17.594px, parking the panel at 84px — showing 50 of the year's 94 active days.
+  It now reads the measured pitch and re-places on a font-size change itself.
+
 ### 0.0.5
 
 **Added**

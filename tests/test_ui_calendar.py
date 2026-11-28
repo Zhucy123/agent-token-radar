@@ -125,6 +125,57 @@ class CalendarFrontendTests(unittest.TestCase):
     def _css(self) -> str:
         return APP_CSS.read_text(encoding="utf-8")
 
+    def test_the_tooltip_sits_outside_the_sideways_scroller(self) -> None:
+        """A single-axis scroll container coerces its other axis to `auto`.
+
+        `.cal-wrap` scrolls sideways (`overflow-x: auto`), so `overflow-y`
+        computes to `auto` too and anything taller than it is clipped. The
+        tooltip started out as a child of that wrapper, which cut it off at the
+        bottom and put a vertical scrollbar across the calendar. It has to be a
+        child of the panel, which does not clip.
+        """
+        html = INDEX_HTML.read_text(encoding="utf-8")
+        wrap_open = html.index('<div class="cal-wrap">')
+        wrap_close = html.index("</div>\n      </div>", wrap_open)
+        scroller = html[wrap_open:wrap_close]
+        self.assertIn('id="calGrid"', scroller, "the grid does belong in the scroller")
+        self.assertNotIn('id="calTip"', scroller,
+                         "the tooltip must not live inside the clipping scroller")
+        self.assertIn('id="calTip"', html)
+
+        # The panel is the tooltip's containing block, so it must not clip and
+        # must establish positioning.
+        css = self._css()
+        m = re.search(r"\n  \.cal-panel\s*\{(.*?)\n  \}", css, re.S)
+        self.assertIsNotNone(m)
+        body = m.group(1)
+        self.assertIn("position: relative", body)
+        self.assertIn("overflow: visible", body)
+
+    def test_the_tooltip_is_placed_inside_the_panel_on_both_axes(self) -> None:
+        """It has to stay inside the panel horizontally AND vertically.
+
+        Measured on a 1200px window: the box ran to 762px against a scroller
+        ending at 814px, so the second line of every tall tooltip was cut. The
+        placement must clamp against the panel's client box, flipping below the
+        square when there is no room above it, and fall back to pinning itself
+        inside the box for a very short panel.
+        """
+        js = self._js()
+        body = self._fn("wireCalendar")
+        # The offset parent is the panel, and its padding/client box is used.
+        self.assertIn('const panel = $("calPanel") || tip.parentElement;', body)
+        self.assertIn("const pcs = getComputedStyle(panel);", body)
+        self.assertIn("panel.clientWidth", body)
+        self.assertIn("panel.clientHeight", body)
+        # Clamped on both axes, with the below-the-square flip.
+        self.assertIn("if (cr.top - th - 8 < boxTop) top = cr.bottom + 8 - boxTop;", body)
+        self.assertIn("Math.max(0, Math.min(top, boxBottom - boxTop - th))", body)
+        self.assertIn("left = Math.max(4, Math.min(left, innerW - tw + 4));", body)
+        # The old bug: positioning against the scroller.
+        self.assertNotIn("const wrap = tip.parentElement;", body)
+        self.assertNotIn("wr.width - tw - 4", body)
+
     def test_the_section_exists_and_is_labelled(self) -> None:
         html = INDEX_HTML.read_text(encoding="utf-8")
         self.assertIn('id="calGrid"', html)
@@ -272,6 +323,183 @@ class CalendarFrontendTests(unittest.TestCase):
         blocks = re.findall(r"@media \(pointer: coarse\)\s*\{(.*?)\n  \}", css, re.S)
         self.assertTrue(blocks, "no coarse-pointer block found")
         self.assertIn(".cal-step", "\n".join(blocks))
+
+    def _fn(self, name: str) -> str:
+        js = self._js()
+        m = re.search(rf"function {name}\(([^)]*)\)\s*\{{(.*?)\n  \}}", js, re.S)
+        self.assertIsNotNone(m, f"{name} is missing")
+        return m.group(2)
+
+    def test_a_narrow_window_reveals_the_busy_side(self) -> None:
+        """A scroll container starts at its left edge -- January -- and January of
+        a fresh year usually holds nothing, so a laptop user was shown a screen of
+        empty squares and had to hunt sideways. The placement has to choose the
+        window of week columns holding the MOST active days, not today's column:
+        today is one day, and a reader opening the panel wants the year's work."""
+        js = self._js()
+        body = self._fn("placeCalendarReveal")
+        # One bucket per week column, incremented for every day with usage.
+        self.assertIn("const active = new Array(cols).fill(0);", body)
+        self.assertIn("if (d.total_tokens > 0)", body)
+        self.assertIn("active[Math.floor((i + firstWeekday) / 7)] += 1;", body)
+        # ...and a sliding window picks the widest sum of them.
+        self.assertIn("running += active[c];", body)
+        self.assertIn("running -= active[c - visible];", body)
+        self.assertIn("if (running >= bestScore)", body)
+        # Ties go to the LATER window, so the recent side wins a draw.
+        self.assertIn("bestStart = c - visible + 1;", body)
+
+    def test_the_number_of_visible_columns_comes_from_the_measured_pitch(self) -> None:
+        """How many columns fit is a measurement, never a guess.
+
+        Guessing it from the viewport width (or from the root font size) is what
+        parked the panel at 84px of a possible 303px: the guess said 5 columns
+        could fit while the laid-out pitch allowed 17. The floor must divide the
+        usable width by the pitch read off real boxes, and the sticky weekday
+        gutter has to be subtracted because it covers the first columns.
+        """
+        js = self._js()
+        lay = self._fn("calendarLayout")
+        self.assertIn("getBoundingClientRect().left", lay)
+        self.assertIn("const pitch = at(1) - at(0);", lay)
+
+        body = self._fn("placeCalendarReveal")
+        self.assertIn("const gutterW = gutter ? gutter.getBoundingClientRect().width + 8 : 0;",
+                      body)
+        self.assertIn("const usable = wrap.clientWidth - gutterW;", body)
+        self.assertIn("Math.floor((usable + 2) / pitch)", body)
+        # No deriving the pitch from font size or client width.
+        for banned in ("fontSize", "getComputedStyle", "offsetWidth"):
+            self.assertNotIn(banned, lay + body, f"{banned} is a guess, not a measurement")
+
+    def test_reveal_gives_up_gracefully(self) -> None:
+        """No overflow, no days, or no day with usage must leave the year at
+        January instead of throwing or scrolling somewhere arbitrary -- and every
+        scroll must be clamped, so a long delta can never fling the panel past
+        the end."""
+        js = self._js()
+        body = self._fn("placeCalendarReveal")
+        self.assertIn("const overflow = wrap.scrollWidth - wrap.clientWidth;", body)
+        self.assertIn("if (overflow <= 1) { settle(0); return; }", body)
+        self.assertIn("if (!days.length) return;", body)
+        self.assertIn("if (!active.some((n) => n > 0)) { settle(0); return; }", body)
+        self.assertIn("if (visible >= cols) { settle(0); return; }", body)
+        # The only assignment goes through the clamp.
+        self.assertIn("wrap.scrollLeft = Math.max(0, Math.min(target, maxScroll));",
+                      body)
+        self.assertEqual(body.count("scrollLeft ="), 1,
+                         "every scroll must go through settle()")
+
+    def test_reveal_only_re_places_when_the_measured_geometry_changes(self) -> None:
+        """A text-size change moves the grid a moment after the event, so the
+        trigger cannot be "a resize happened" -- it has to be the measured
+        geometry, compared against what was placed last.
+
+        Two real failures came out of getting this wrong: a placement computed
+        from a stale 14px pitch parked the panel at 84px of a possible 303px
+        (showing 50 of the year's 94 active days), and a version keyed on the
+        wrapper width skipped every later correction. Comparing against reality
+        makes a stale read a no-op instead of a wrong answer.
+        """
+        js = self._js()
+        body = self._fn("placeIfChanged")
+        self.assertIn("const lay = calendarLayout();", body)
+        self.assertIn("const width = lay.wrap.clientWidth;", body)
+        self.assertIn("Math.abs(lay.pitch - lastPlaced.pitch) <= 0.01", body)
+        self.assertIn("Math.abs(width - lastPlaced.width) <= 0.5", body)
+        # It remembers what it placed, so the same geometry is a no-op...
+        self.assertIn("lastPlaced = { pitch: lay.pitch, width, year: cal.year, days };",
+                      body)
+        # ...and it re-places through the armed path, not by writing scrollLeft.
+        self.assertIn("placeCalendarReveal(cal, lay);", body)
+        self.assertNotIn("scrollLeft =", body)
+
+    def test_switching_years_re_places_even_though_the_pitch_is_the_same(self) -> None:
+        """A 365-day year and a 366-day one lay out at the same column pitch, so
+        "the geometry changed" is not enough to detect a year switch.
+
+        Leaving the year out of the comparison meant "previous year" kept the
+        old year's scroll offset; with an empty year on screen the panel sat at
+        its far right, showing nothing, while the year it should have been
+        showing started at the left (measured: 303px into an empty 2025).
+        """
+        js = self._js()
+        body = self._fn("placeIfChanged")
+        self.assertIn("const cal = window.__lastCalendar;", body)
+        self.assertIn("const days = (cal.days || []).length;", body)
+        self.assertIn("cal.year === lastPlaced.year", body)
+        self.assertIn("days === lastPlaced.days", body)
+        self.assertIn("lastPlaced = { pitch: lay.pitch, width, year: cal.year, days };",
+                      body)
+        # The re-place must use the year that was just measured, not a stale one.
+        self.assertIn("placeCalendarReveal(cal, lay);", body)
+
+    def test_the_reveal_runs_from_the_render_and_from_a_font_change(self) -> None:
+        """Something has to CALL the placement, and the two callers are fixed.
+
+        The ResizeObserver is the trigger for a window resize, but it is not
+        reliable for a text-size change -- measured in the browser check, after
+        two font-size changes it stopped calling back at all, and the panel was
+        left showing the previous size's columns. So the settings path calls in
+        too, at the one moment the change is known to have happened.
+        """
+        js = self._js()
+        render = re.search(r"function renderCalendar\(cal\)\s*\{(.*?)\n  \}", js, re.S)
+        self.assertIsNotNone(render)
+        self.assertIn("revealCalendarData(cal)", render.group(1))
+
+        apply = re.search(r"function applySetting\(setting, value\)\s*\{(.*?)\n  \}",
+                          js, re.S)
+        self.assertIsNotNone(apply)
+        self.assertIn('setting.key === "fs"', apply.group(1))
+        self.assertIn("revealCalendarData(state.calendar)", apply.group(1))
+
+        # And the load path has to keep what applySetting reads.
+        self.assertIn("state.calendar = cal;", js)
+
+    def test_a_width_change_re_anchors_but_a_scroll_does_not(self) -> None:
+        """A narrower window fits fewer columns, so which columns are worth
+        showing changes with it, and a text-size change resizes the panel too --
+        both must re-run the placement. A reader's own horizontal scroll changes
+        no width, so it must not be undone underneath them: nothing may listen
+        for scroll."""
+        js = self._js()
+        m = re.search(r"state\._calObserver = new ResizeObserver\(\(\) => "
+                      r"placeIfChanged\(\)\);", js, re.S)
+        self.assertIsNotNone(m, "the calendar needs a width-driven ResizeObserver")
+        self.assertIn("state._calObserver.observe(calWrap);", js)
+        # The grid too: the squares are sized in rem while the scroller can keep
+        # the same box, so watching only the wrapper misses a font-size change.
+        self.assertIn("if (calGrid) state._calObserver.observe(calGrid);", js)
+        self.assertIn('window.addEventListener("resize", () => placeIfChanged()',
+                      js)
+        # Nothing in the calendar watches the scroll position, so a reader who
+        # scrolls the year themselves is left where they put it.
+        for fn in ("calendarLayout", "placeIfChanged",
+                   "placeCalendarReveal", "revealCalendarData"):
+            self.assertNotIn("addEventListener", self._fn(fn),
+                             f"{fn} must not listen for events")
+
+    def test_an_empty_placement_clears_the_stale_handle(self) -> None:
+        """The verify script reads window.__calReveal. If an early return left the
+        previous run's handle in place, the script would read a window that
+        describes a different width and pass on numbers nothing produced."""
+        js = self._js()
+        body = self._fn("placeCalendarReveal")
+        head = body.split("const days", 1)[0]
+        self.assertIn("window.__calReveal = null;", head,
+                      "the handle must be cleared before any early return")
+
+    def test_the_weekday_gutter_stays_put_while_the_year_scrolls(self) -> None:
+        """Once the panel scrolls sideways the labels are only useful next to the
+        squares they name, so they are pinned to the left edge."""
+        css = self._css()
+        m = re.search(r"\n  \.cal-weekdays\s*\{(.*?)\n  \}", css, re.S)
+        self.assertIsNotNone(m)
+        bodies = "\n".join(x.group(1) for x in
+                           re.finditer(r"\n  \.cal-weekdays\s*\{(.*?)\n  \}", css, re.S))
+        self.assertIn("position: sticky", bodies)
+        self.assertIn("inset-inline-start: 0", bodies)
 
 
 if __name__ == "__main__":

@@ -277,7 +277,7 @@
        calendar answers "when in the year", and both are legitimate questions. -->
   <section aria-labelledby="calendar-title">
     <h2 id="calendar-title" class="section-title" data-i18n="sec.calendar">用量日历</h2>
-    <div class="panel cal-panel">
+    <div id="calPanel" class="panel cal-panel">
       <div class="cal-head">
         <div class="cal-yearnav" role="group" data-i18n-aria="cal.yearNav">
           <button type="button" id="calPrev" class="cal-step" data-i18n-aria="cal.prevYear">
@@ -318,8 +318,14 @@
                  aria-labelledby="calendar-title" data-i18n-aria="cal.grid"></div>
           </div>
         </div>
-        <div id="calTip" class="cal-tip" hidden></div>
       </div>
+      <!-- The tooltip lives OUTSIDE .cal-wrap on purpose. That wrapper scrolls
+           sideways (`overflow-x: auto`), and a single-axis scroll container has
+           its other axis coerced to `auto` as well -- so a tooltip positioned
+           inside it was clipped at the bottom and pushed a vertical scrollbar
+           onto the calendar. As a child of the panel, which does not clip, it
+           can be placed anywhere near the square. -->
+      <div id="calTip" class="cal-tip" hidden></div>
       <p id="calStatus" class="cal-status" role="status" aria-live="polite"></p>
     </div>
   </section>

@@ -1237,6 +1237,9 @@
      survives the dark theme, where a fixed green ramp washes out. */
   .cal-panel {
     overflow: visible;
+    /* The tooltip is a child of the panel (NOT of the sideways scroller, which
+       would clip it -- see index.html), so the panel is its containing block. */
+    position: relative;
     /* The five bands, as plain colours. The palest band has to be clearly
        lighter than the panel but still a FILLED square: before this it was a
        near-white fill plus a 1px inset ring, and the ring is what blurred. */
@@ -1336,7 +1339,8 @@
     /* A floor on the column width, not a bare 1fr: on a narrow window 53 weeks
        squeezed into 600px left 7px squares, which are neither readable nor
        clickable. With a floor the grid keeps its minimum size and the wrapper
-       scrolls sideways instead, which is what a calendar wants. */
+       scrolls sideways instead, which is what a calendar wants -- and when it
+       does scroll, revealCalendarData picks the side worth showing. */
     grid-template-columns: repeat(var(--cal-cols, 53), minmax(0.75rem, 1fr));
     gap: 2px;
   }
@@ -1371,6 +1375,16 @@
     font-size: var(--text-xs);
     color: var(--muted);
     text-align: end;
+    /* The panel scrolls sideways on a narrow window, and the labels are only
+       useful next to the squares they name -- so they stay pinned to the left
+       edge while the weeks move under them. Without this they scroll away and
+       the columns lose their meaning. The panel background hides the squares
+       passing behind. */
+    position: sticky;
+    inset-inline-start: 0;
+    z-index: 2;
+    background: var(--panel);
+    padding-inline-end: 2px;
   }
   .cal-weekdays span { display: flex; align-items: center; justify-content: flex-end; }
   /* Third row (Wed) and fifth (Fri); the rest stay blank but keep the pitch. */
