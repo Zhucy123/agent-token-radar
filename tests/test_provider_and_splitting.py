@@ -237,14 +237,14 @@ class TestSessionTitles(unittest.TestCase):
         """The compressed bytes do not contain the literal marker."""
         import os
 
-        from compression import zstd as std_zstd
+        from _zstd import zstd_compress
 
         records = [
             {"type": "session", "id": "session-x1"},
             {"type": "session/title", "seq": 2, "data": {"title": "标题在这里"}},
         ]
         body = "\n".join(json.dumps(r, ensure_ascii=False) for r in records) + "\n"
-        blob = std_zstd.compress(body.encode("utf-8"))
+        blob = zstd_compress(body.encode("utf-8"))
         self.assertNotIn(b"session/title", blob,
                          "precondition: zstd must hide the marker")
 
@@ -405,14 +405,14 @@ class TestTitleSourcesByAgent(unittest.TestCase):
         """The compressed bytes do not contain the literal marker."""
         import os
 
-        from compression import zstd as std_zstd
+        from _zstd import zstd_compress
 
         records = [
             {"type": "session", "id": "session-x1"},
             {"type": "session/title", "seq": 2, "data": {"title": "标题在这里"}},
         ]
         body = "\n".join(json.dumps(r, ensure_ascii=False) for r in records) + "\n"
-        blob = std_zstd.compress(body.encode("utf-8"))
+        blob = zstd_compress(body.encode("utf-8"))
         self.assertNotIn(b"session/title", blob,
                          "precondition: zstd must hide the marker")
 

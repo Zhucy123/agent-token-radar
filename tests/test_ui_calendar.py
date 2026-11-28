@@ -21,9 +21,16 @@ import re
 import unittest
 from pathlib import Path
 
-from fastapi.testclient import TestClient
+from agent_token_radar.i18n import STRINGS
 
-from agent_token_radar.web import create_app
+try:
+    from fastapi.testclient import TestClient
+    from agent_token_radar.web import create_app
+except ModuleNotFoundError as exc:  # pragma: no cover - fastapi is optional
+    if exc.name not in ("fastapi", "httpx"):
+        raise
+    TestClient = None  # type: ignore[assignment]
+    create_app = None  # type: ignore[assignment]
 
 ROOT = Path(__file__).resolve().parents[1]
 APP_JS = ROOT / "agent_token_radar" / "static" / "app.js"
@@ -34,6 +41,8 @@ APP_CSS = ROOT / "agent_token_radar" / "static" / "app.css"
 class CalendarApiTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
+        if TestClient is None or create_app is None:
+            raise unittest.SkipTest("fastapi not installed")
         cls.app = create_app()
         cls.client = TestClient(cls.app)
 
@@ -280,6 +289,24 @@ class CalendarFrontendTests(unittest.TestCase):
         self.assertIsNotNone(m)
         body = m.group(1)
         self.assertIn("d.cost_usd === null", body)
+
+    def test_tooltip_separator_follows_the_ui_language(self) -> None:
+        """A hardcoded ideographic comma leaked into English tooltips.
+
+        The pieces are already translated, but they were joined with "，", so an
+        English page read "15 Nov (Saturday)，no usage". The join has to come
+        from the string table too.
+        """
+        js = self._js()
+        m = re.search(r"function calendarDayLabel\(d\)\s*\{(.*?)\n  \}", js, re.S)
+        self.assertIsNotNone(m)
+        body = m.group(1)
+        self.assertIn('t("cal.tipSep")', body)
+        self.assertIn("parts.join(sep)", body)
+        self.assertNotIn("，", body)
+        self.assertEqual(STRINGS["zh"]["cal.tipSep"], "，")
+        self.assertEqual(STRINGS["en"]["cal.tipSep"], ", ")
+        self.assertNotRegex(STRINGS["en"]["cal.tipSep"], r"[\u4e00-\u9fff]")
 
     def test_partial_coverage_is_stated(self) -> None:
         js = self._js()

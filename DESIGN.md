@@ -480,7 +480,7 @@ JSONL 只在文件开头若干行里找 `cwd`（Codex 在第一条、Claude 很�
 
 ```bash
 # 在仓库根目录（agent_token_radar/ 的上一级）运行
-python -m unittest discover -s tests -p 'test_*.py'   # 293 个测试：桶映射 + 幂等性 + provider 来源 + 项目维度 + 切行 + 缓存命中率 + 端口顺延 + 费用估算
+python -m unittest discover -s tests -p 'test_*.py'   # 408 个测试：桶映射 + 幂等性 + provider 来源 + 项目维度 + 切行 + 缓存命中率 + 端口顺延 + 费用估算 + 日历
 python -m agent_token_radar scan                       # 全量扫描冒烟
 python _build_icons.py --check                         # 确认 icons.py 与源规格一致（在 agent_token_radar/ 内）
 ```

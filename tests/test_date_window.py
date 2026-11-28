@@ -28,7 +28,18 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from agent_token_radar.web import _bounds, _parse_day  # noqa: E402
+try:
+    from agent_token_radar.web import _bounds, _parse_day  # noqa: E402
+except ModuleNotFoundError as exc:  # pragma: no cover - fastapi is optional
+    if exc.name != "fastapi":
+        raise
+    _bounds = None  # type: ignore[assignment]
+    _parse_day = None  # type: ignore[assignment]
+
+
+def setUpModule() -> None:
+    if _bounds is None or _parse_day is None:
+        raise unittest.SkipTest("fastapi not installed")
 
 DAY = 86_400_000
 

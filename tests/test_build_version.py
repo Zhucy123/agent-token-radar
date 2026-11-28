@@ -86,9 +86,12 @@ class GeneratedResourceTests(unittest.TestCase):
     """The written file must be parseable by PyInstaller itself."""
 
     def test_resource_parses_and_carries_the_fields_explorer_shows(self) -> None:
-        from PyInstaller.utils.win32.versioninfo import (
-            load_version_info_from_text_file,
-        )
+        try:
+            from PyInstaller.utils.win32.versioninfo import (
+                load_version_info_from_text_file,
+            )
+        except ModuleNotFoundError:
+            self.skipTest("PyInstaller is not installed")
 
         path = version_file()
         vi = load_version_info_from_text_file(path)
