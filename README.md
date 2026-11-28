@@ -47,6 +47,7 @@
 |---|---|
 | **25 个 Agent 适配器** | Claude Code、Codex、DSH、Gemini / Antigravity、Hermes、WorkBuddy、Kimi、Copilot、Qoder、Qwen Code、Pi、Prime、CodeBuddy、Command Code、Devin、MiMoCode、MiniMax、OpenCode、ZCode、Muse 等 |
 | **多维度统计** | 按 Agent / Model / Provider / 项目（工作目录）/ Session / 天 |
+| **用量日历** | 一整年的热力图，一天一格；有记录的日子按排名分五档着色，悬停看当天 token 与费用，点一天就跳到那天 |
 | **缓存命中率** | 先聚合再相除，不平均每行比率（详见 [DESIGN.md](DESIGN.md)） |
 | **参考费用估算** | 按厂商官方标价，支持分时计价（DeepSeek 峰谷按每条请求自身时间判断） |
 | **中英双语** | 严格分离，中文模式只显示中文 |

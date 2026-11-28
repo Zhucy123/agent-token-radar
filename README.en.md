@@ -56,6 +56,7 @@ you see the real conversation names.
 |---|---|
 | **25 agent adapters** | Claude Code, Codex, DSH, Gemini / Antigravity, Hermes, WorkBuddy, Kimi, Copilot, Qoder, Qwen Code, Pi, Prime, CodeBuddy, Command Code, Devin, MiMoCode, MiniMax, OpenCode, ZCode, Muse and more |
 | **Six dimensions** | by Agent / Model / Provider / project (working directory) / Session / day |
+| **Usage calendar** | a whole year as one heatmap, a square per day; days are shaded in five bands by rank, hover for that day's tokens and cost, click a day to focus it |
 | **Cache-hit rate** | aggregated first, then divided; per-row ratios are never averaged (see [DESIGN.md](DESIGN.md)) |
 | **Reference cost** | from official list prices, including time-of-day billing (DeepSeek peak/off-peak is decided per request from that request's own timestamp) |
 | **Strict bilingual UI** | Chinese mode shows Chinese only, English mode English only |
