@@ -209,7 +209,6 @@ code change.
 | [PRICING-NOTES.md](PRICING-NOTES.md) | Pricing rules: where prices come from, why unpriced is not zero, how time-of-day billing works |
 | [TOKEI-NOTES.md](TOKEI-NOTES.md) | tokei research and per-agent parsing spec |
 | [BUILD-NOTES.md](BUILD-NOTES.md) | The packaging process and the 14 traps hit along the way |
-| [HANDOFF.md](HANDOFF.md) | Entry point for whoever picks this up next |
 
 The documents above are written in Chinese; the code and its comments are in
 English.

@@ -181,7 +181,6 @@ agent-token-radar desktop                       # 原生桌面窗口
 | [PRICING-NOTES.md](PRICING-NOTES.md) | 定价口径：官方价来源、为什么无价不算 0、分时计价怎么实现 |
 | [TOKEI-NOTES.md](TOKEI-NOTES.md) | tokei 调研与逐 Agent 解析规格 |
 | [BUILD-NOTES.md](BUILD-NOTES.md) | 打包过程与 14 个坑的记录 |
-| [HANDOFF.md](HANDOFF.md) | 给接手者的入口说明 |
 
 ---
 
