@@ -187,8 +187,9 @@ agent-token-radar desktop                       # 原生桌面窗口
 ## 开发
 
 ```bash
-# 测试（需要 PYTHONPATH 指向 tests）
-PYTHONPATH=tests python -m unittest discover -s tests -p 'test_*.py'   # 293 个测试
+# 测试（需要 PYTHONPATH 指向 tests；仪表盘相关测试还需要 fastapi / uvicorn / httpx）
+# pip install fastapi uvicorn httpx
+PYTHONPATH=tests python -m unittest discover -s tests -p 'test_*.py'   # 408 个测试
 
 # 扫描冒烟
 python -m agent_token_radar scan

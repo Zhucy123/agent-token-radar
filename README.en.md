@@ -218,8 +218,9 @@ English.
 ## Development
 
 ```bash
-# tests (PYTHONPATH must point at tests/)
-PYTHONPATH=tests python -m unittest discover -s tests -p 'test_*.py'   # 293 tests
+# tests (PYTHONPATH must point at tests/; dashboard tests also need fastapi / uvicorn / httpx)
+# pip install fastapi uvicorn httpx
+PYTHONPATH=tests python -m unittest discover -s tests -p 'test_*.py'   # 408 tests
 
 # scan smoke test
 python -m agent_token_radar scan
