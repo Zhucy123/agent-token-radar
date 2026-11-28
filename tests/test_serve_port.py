@@ -125,7 +125,10 @@ class ServeBehaviourTests(unittest.TestCase):
     def _run(self, argv: list[str], busy: int) -> tuple[int, str]:
         import io
 
-        import uvicorn
+        try:
+            import uvicorn
+        except ModuleNotFoundError:
+            self.skipTest("uvicorn not installed")
 
         captured: dict[str, object] = {}
 

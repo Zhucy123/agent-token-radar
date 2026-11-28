@@ -324,7 +324,7 @@ class TestDsh(_AdapterTestCase):
     adapter_cls = DshAdapter
 
     def test_mapping_and_idempotency(self) -> None:
-        from compression import zstd
+        from _zstd import zstd_compress
 
         p = self.root / "session.v4.jsonl.zstd"
         # Two independent frames, exactly like a real DSH append-only log.
@@ -332,7 +332,7 @@ class TestDsh(_AdapterTestCase):
         f2 = [x for x in DSH_LINES[3:]]
         frame1 = "\n".join(json.dumps(x) if isinstance(x, dict) else x for x in f1) + "\n"
         frame2 = "\n".join(json.dumps(x) if isinstance(x, dict) else x for x in f2) + "\n"
-        p.write_bytes(zstd.compress(frame1.encode("utf-8")) + zstd.compress(frame2.encode("utf-8")))
+        p.write_bytes(zstd_compress(frame1.encode("utf-8")) + zstd_compress(frame2.encode("utf-8")))
         self._patch_detect([Source(path=p, kind="zstd-jsonl", agent="dsh")])
         t, r = self._run_twice()
         self.assertEqual(len(r.events), 2, "assistant/chunk duplicates must be ignored")
